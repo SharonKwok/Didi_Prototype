@@ -30,7 +30,6 @@ def load_data():
     df_inapp['day_of_week'] = df_inapp['pt'].dt.day_name()
     df_inapp['hour_of_day'] = pd.to_datetime(df_inapp['plan_start_time']).dt.hour if 'plan_start_time' in df_inapp.columns else np.random.randint(0, 24, size=len(df_inapp))
     
-    # Assign the requested URL to In-App data
     df_inapp['url'] = mock_url
     
     if 'campaign_ver' not in df_inapp.columns:
@@ -345,12 +344,11 @@ try:
             use_container_width=True, hide_index=True
         )
 
-    # ---------------- TAB 1: IN-APP (Gateway 2 Governed Upgrade) ----------------
+    # ---------------- TAB 1: IN-APP (10+ Rich Diagrams & Optimized Layout) ----------------
     with tab_inapp:
         st.subheader("In-App Advertising Suite")
         st.markdown("*Gateway 2 Governed In-App reporting module with transparent data-quality review controls.*")
         
-        # In-App Local Governance Controls
         st.markdown("##### In-App Governance Controls")
         col_ia1, col_ia2, col_ia3 = st.columns(3)
         inapp_version = col_ia1.selectbox("Campaign Version", ["'All' Only (Prevents Duplication)", "Raw Data (Include All Versions)"])
@@ -364,12 +362,12 @@ try:
         elif status_filter == "Review Only":
             gov_inapp = gov_inapp[gov_inapp['data_quality_status'].str.lower() == 'review']
 
-        # 1. KPI Strip
+        # 1. KPI Strip with vertical multi-line stacking to prevent truncation
         st.markdown("---")
         st.markdown("##### 1. In-App KPI Strip")
         total_shows = gov_inapp['show_pv'].sum()
         total_clicks = gov_inapp['click_pv'].sum()
-        daily_show_uv = gov_inapp['show_uv'].sum() # Label as daily unique viewers per teammate rule
+        daily_show_uv = gov_inapp['show_uv'].sum()
         daily_click_uv = gov_inapp['click_uv'].sum()
         inapp_ctr = (total_clicks / total_shows * 100) if total_shows > 0 else 0
         review_count = len(gov_inapp[gov_inapp['data_quality_status'].str.lower() == 'review'])
@@ -382,38 +380,109 @@ try:
         ik5.metric("CTR (%)", f"{inapp_ctr:.2f}%")
         ik6.metric("Review Rows", f"{review_count:,.0f}")
 
-        # 2. Trend View & Funnel View
+        # 2. 10 Rich In-App Diagrams
         st.markdown("---")
-        st.markdown("##### 2. Trend & Funnel Views")
-        it_col1, it_col2 = st.columns(2)
-        with it_col1:
-            st.markdown("**Daily Show PV vs Click PV Trend**")
+        st.markdown("##### 2. In-App Analytics & Visualizations")
+        
+        # Diagram 1 & 2
+        ia_c1, ia_c2 = st.columns(2)
+        with ia_c1:
+            st.markdown("**1. Campaign Volume Treemap**")
+            tree_data = gov_inapp.groupby(['campaign_id', 'campaign_name'])['show_pv'].sum().reset_index().nlargest(10, 'show_pv')
+            tree_data['display_label'] = tree_data['campaign_name'] + " (" + tree_data['campaign_id'].astype(str).str[-4:] + ")"
+            st.plotly_chart(px.treemap(tree_data, path=[px.Constant("Campaigns"), 'display_label'], values='show_pv', color='show_pv', color_continuous_scale='Blues'), use_container_width=True)
+        with ia_c2:
+            st.markdown("**2. 4-Quadrant Performance Matrix**")
+            quad_data = gov_inapp.groupby(['campaign_id', 'campaign_name']).agg({'show_pv': 'sum', 'click_pv': 'sum'}).reset_index()
+            quad_data['ctr'] = (quad_data['click_pv'] / quad_data['show_pv'] * 100).fillna(0)
+            fig_matrix = px.scatter(quad_data, x='show_pv', y='ctr', size='click_pv', color='campaign_name', hover_name='campaign_name')
+            if not quad_data.empty:
+                fig_matrix.add_hline(y=quad_data['ctr'].median(), line_dash="dot", line_color="gray")
+                fig_matrix.add_vline(x=quad_data['show_pv'].median(), line_dash="dot", line_color="gray")
+            st.plotly_chart(fig_matrix, use_container_width=True)
+
+        # Diagram 3 & 4
+        ia_c3, ia_c4 = st.columns(2)
+        with ia_c3:
+            st.markdown("**3. Daily Show PV vs Click PV Trend**")
             trend_ia = gov_inapp.groupby('pt')[['show_pv', 'click_pv']].sum().reset_index()
             fig_ia_trend = px.line(trend_ia, x='pt', y=['show_pv', 'click_pv'], markers=True, labels={'value':'Volume', 'pt':'Date', 'variable':'Metric'})
             st.plotly_chart(fig_ia_trend, use_container_width=True)
-        with it_col2:
-            st.markdown("**Master Exposure-to-Click Funnel**")
+        with ia_c4:
+            st.markdown("**4. Master Exposure-to-Click Funnel**")
             fig_ia_funnel = go.Figure(go.Funnel(y=['Show PV', 'Click PV'], x=[total_shows, total_clicks], marker={"color": ["#4C72B0", "#55A868"]}))
             st.plotly_chart(fig_ia_funnel, use_container_width=True)
 
-        # 3. Comparison View & Quality View
-        st.markdown("---")
-        st.markdown("##### 3. Comparison & Quality Exception Views")
-        ic_col1, ic_col2 = st.columns(2)
-        with ic_col1:
-            st.markdown("**Campaign Scale vs Engagement Ranking**")
-            camp_rank = gov_inapp.groupby('campaign_name').agg({'show_pv':'sum', 'click_pv':'sum'}).reset_index()
-            camp_rank['CTR (%)'] = (camp_rank['click_pv'] / camp_rank['show_pv'] * 100).fillna(0)
-            st.dataframe(camp_rank.sort_values('show_pv', ascending=False).head(10), use_container_width=True, hide_index=True)
-        with ic_col2:
-            st.markdown("**Data-Quality Review Flags Breakdown**")
-            review_df = gov_inapp[gov_inapp['data_quality_status'].str.lower() == 'review']
-            if not review_df.empty:
-                flag_counts = review_df['data_quality_flag'].value_counts().reset_index()
-                flag_counts.columns = ['Exception Reason', 'Record Count']
-                st.dataframe(flag_counts, use_container_width=True, hide_index=True)
+        # Diagram 5 & 6
+        ia_c5, ia_c6 = st.columns(2)
+        with ia_c5:
+            st.markdown("**5. City Delivery Breakdown**")
+            city_ia_br = gov_inapp.groupby('city_name')['show_pv'].sum().reset_index()
+            fig_city_br = px.bar(city_ia_br, x='city_name', y='show_pv', color='city_name', title="Shows by City")
+            st.plotly_chart(fig_city_br, use_container_width=True)
+        with ia_c6:
+            st.markdown("**6. Top Placement CTR Ranking**")
+            place_rank = gov_inapp.groupby('resource_name').agg({'show_pv':'sum', 'click_pv':'sum'}).reset_index()
+            place_rank['CTR (%)'] = (place_rank['click_pv'] / place_rank['show_pv'] * 100).fillna(0)
+            fig_place = px.bar(place_rank.sort_values('CTR (%)', ascending=True).tail(10), x='CTR (%)', y='resource_name', orientation='h', title="Top Placements by CTR")
+            st.plotly_chart(fig_place, use_container_width=True)
+
+        # Diagram 7 & 8
+        ia_c7, ia_c8 = st.columns(2)
+        with ia_c7:
+            st.markdown("**7. Day of Week Activity Heatmap**")
+            ia_heat = gov_inapp.pivot_table(index='campaign_name', columns='day_of_week', values='show_pv', aggfunc='sum').fillna(0)
+            days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            ia_heat = ia_heat.reindex(columns=[d for d in days_order if d in ia_heat.columns])
+            if not ia_heat.empty:
+                fig_ia_heat = px.imshow(ia_heat.head(10), aspect="auto", color_continuous_scale='Blues', title="Campaign Activity Heatmap (Day of Week)")
+                st.plotly_chart(fig_ia_heat, use_container_width=True)
             else:
-                st.success("No review anomalies found under current filters.")
+                st.info("Insufficient data for heatmap.")
+        with ia_c8:
+            st.markdown("**8. Cumulative Exposure Penetration**")
+            cum_ia_df = trend_ia.copy()
+            cum_ia_df['Cumulative Shows'] = cum_ia_df['show_pv'].cumsum()
+            fig_cum_ia = px.area(cum_ia_df, x='pt', y='Cumulative Shows', title="Cumulative Show Penetration Over Time", color_discrete_sequence=['#4C72B0'])
+            st.plotly_chart(fig_cum_ia, use_container_width=True)
+
+        # Diagram 9 & 10
+        ia_c9, ia_c10 = st.columns(2)
+        with ia_c9:
+            st.markdown("**9. Campaign Version Distribution**")
+            ver_df = gov_inapp.groupby('campaign_ver')['show_pv'].sum().reset_index()
+            fig_ver = px.pie(ver_df, values='show_pv', names='campaign_ver', hole=0.4, title="Shows by Campaign Version")
+            st.plotly_chart(fig_ver, use_container_width=True)
+        with ia_c10:
+            st.markdown("**10. Data Quality Exception Breakdown**")
+            rev_br = gov_inapp['data_quality_flag'].value_counts().reset_index()
+            rev_br.columns = ['Flag Reason', 'Count']
+            fig_rev = px.bar(rev_br, x='Flag Reason', y='Count', color='Flag Reason', title="Quality Flags Breakdown")
+            st.plotly_chart(fig_rev, use_container_width=True)
+
+        # 3. Full-width Accompanied Table: Campaign Scale vs Engagement Ranking
+        st.markdown("---")
+        st.markdown("##### 3. Campaign Scale vs Engagement Ranking (Full View)")
+        
+        camp_rank = gov_inapp.groupby('campaign_name').agg({'show_pv':'sum', 'click_pv':'sum'}).reset_index()
+        camp_rank['CTR (%)'] = (camp_rank['click_pv'] / camp_rank['show_pv'] * 100).fillna(0)
+        
+        # Accompanying Visual for Table 3
+        top_camp_rank = camp_rank.nlargest(10, 'show_pv').sort_values('show_pv', ascending=True)
+        fig_table_accomp = px.bar(top_camp_rank, x='show_pv', y='campaign_name', orientation='h', title="Top 10 Campaigns by Exposure Volume", labels={'show_pv': 'Show PV', 'campaign_name': 'Campaign Name'})
+        fig_table_accomp.update_layout(height=360, margin=dict(l=20, r=20, t=40, b=20))
+        st.plotly_chart(fig_table_accomp, use_container_width=True)
+        
+        st.dataframe(
+            camp_rank.sort_values('show_pv', ascending=False),
+            column_config={
+                "campaign_name": st.column_config.TextColumn("Campaign Name", width="large"),
+                "show_pv": st.column_config.NumberColumn("Show PV", format="%d"),
+                "click_pv": st.column_config.NumberColumn("Click PV", format="%d"),
+                "CTR (%)": st.column_config.NumberColumn("CTR (%)", format="%.2f%%")
+            },
+            use_container_width=True, hide_index=True
+        )
 
         # In-App Actionable Raw Data Table with URL
         st.markdown("---")
