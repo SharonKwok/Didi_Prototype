@@ -46,6 +46,9 @@ def load_data():
     df_promo['date'] = pd.to_datetime(df_promo['date'])
     df_promo['country'] = df_promo['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
     df_promo['day_of_week'] = df_promo['date'].dt.day_name()
+    
+    # Assign the requested URL to Promo data
+    df_promo['url'] = mock_url
 
     # --- 3. Load Communication Data ---
     if os.path.exists(comm_file):
@@ -195,7 +198,7 @@ try:
                 fig_matrix.add_vline(x=quad_data['show_pv'].median(), line_dash="dot", line_color="gray")
             st.plotly_chart(fig_matrix, use_container_width=True)
             
-        # Add In-App Actionable Raw Data Table with URL
+        # In-App Actionable Raw Data Table with URL
         st.markdown("---")
         st.markdown("**📋 In-App Raw Data (Actionable View)**")
         st.dataframe(
@@ -292,7 +295,6 @@ try:
         st.markdown("---")
         st.markdown("##### 3. Market Trends & Predictive Insights")
         
-        # Row 1 of Time Series: Redemptions vs Usage (Existing) + Cumulative Usage (NEW 1)
         ts_col1, ts_col2 = st.columns(2)
         with ts_col1:
             trend_df = gov_promo.groupby('date')[['redemption_count', 'usage_count']].sum().reset_index()
@@ -307,23 +309,19 @@ try:
             st.plotly_chart(fig_trend, use_container_width=True)
             
         with ts_col2:
-            # NEW Chart 1: Cumulative Usage Penetration
             cum_df = trend_df.copy()
             cum_df['Cumulative Usage'] = cum_df['usage_count'].cumsum()
             fig_cum = px.area(cum_df, x='date', y='Cumulative Usage', title="Cumulative Promo Usage Penetration", color_discrete_sequence=['#55A868'])
             st.plotly_chart(fig_cum, use_container_width=True)
             
-        # Row 2: Utilisation Rate Trend (NEW 2) + 4-Quadrant Bubble Matrix (NEW 3)
         ts_col3, ts_col4 = st.columns(2)
         with ts_col3:
-            # NEW Chart 2: Daily Utilisation Rate Trend
             util_trend = gov_promo.groupby('date').agg({'redemption_count':'sum', 'usage_count':'sum'}).reset_index()
             util_trend['Utilisation Rate (%)'] = (util_trend['usage_count'] / util_trend['redemption_count'] * 100).fillna(0)
             fig_util_trend = px.line(util_trend, x='date', y='Utilisation Rate (%)', markers=True, title="Daily Utilisation Rate Trend (%)", color_discrete_sequence=['#8172B3'])
             st.plotly_chart(fig_util_trend, use_container_width=True)
             
         with ts_col4:
-            # NEW Chart 3: Promo Efficiency 4-Quadrant Matrix
             quad_promo = promo_agg.copy()
             if not quad_promo.empty and quad_promo['redemption_count'].sum() > 0:
                 med_red = quad_promo['redemption_count'].median()
@@ -337,10 +335,8 @@ try:
                 fig_promo_quad.add_vline(x=med_red, line_dash="dot", line_color="gray", annotation_text="Median Volume")
                 st.plotly_chart(fig_promo_quad, use_container_width=True)
                 
-        # Row 3: Heatmap (NEW 4) + Market Share Donut (NEW 5)
         ts_col5, ts_col6 = st.columns(2)
         with ts_col5:
-            # NEW Chart 4: Usage Heatmap (City x Day of Week)
             heat_promo = gov_promo.pivot_table(index='city_name', columns='day_of_week', values='usage_count', aggfunc='sum').fillna(0)
             days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
             heat_promo = heat_promo.reindex(columns=[d for d in days_order if d in heat_promo.columns])
@@ -348,11 +344,30 @@ try:
             st.plotly_chart(fig_promo_heat, use_container_width=True)
             
         with ts_col6:
-            # NEW Chart 5: Market Share of Usage (Donut)
             if not city_agg.empty:
                 fig_donut = px.pie(city_agg, values='usage_count', names='city_name', hole=0.4, title="Market Share of Promo Usage", color_discrete_sequence=px.colors.qualitative.Pastel)
                 st.plotly_chart(fig_donut, use_container_width=True)
 
+        # Promo Codes Actionable Raw Data Table with URL
+        st.markdown("---")
+        st.markdown("**📋 Promo Codes Raw Data (Actionable View)**")
+        
+        # Calculate row-level utilisation rate specifically for the raw data view
+        gov_promo['Utilisation Rate (%)'] = (gov_promo['usage_count'] / gov_promo['redemption_count'] * 100).replace([np.inf, -np.inf], 0).fillna(0)
+        
+        st.dataframe(
+            gov_promo[['date', 'city_name', 'promocode', 'redemption_count', 'usage_count', 'Utilisation Rate (%)', 'url']],
+            column_config={
+                "date": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"),
+                "city_name": "City",
+                "promocode": "Promo Code",
+                "redemption_count": "Redemptions",
+                "usage_count": "Usage",
+                "Utilisation Rate (%)": st.column_config.NumberColumn("Utilisation Rate (%)", format="%.1f%%"),
+                "url": st.column_config.LinkColumn("Promo URL", display_text="🔗 View Link")
+            },
+            use_container_width=True, hide_index=True
+        )
 
     # ---------------- TAB 3: COMMUNICATIONS ----------------
     with tab_comm:
@@ -558,7 +573,7 @@ try:
                         heat_df = heat_df.reindex([d for d in days_order if d in heat_df.index])
                         st.plotly_chart(px.imshow(heat_df, aspect="auto", color_continuous_scale='Blues', title="Push Shows Heatmap (Day × Hour)"), use_container_width=True)
 
-            # Add Communications Actionable Raw Data Table with URL
+            # Communications Actionable Raw Data Table with URL
             st.markdown("---")
             st.markdown("**📋 Communications Raw Data (Actionable View)**")
             st.dataframe(
