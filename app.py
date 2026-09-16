@@ -40,30 +40,33 @@ def load_data():
     df_promo['date'] = pd.to_datetime(df_promo['date'])
     df_promo['country'] = df_promo['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
 
-    # --- 3. Load / Mock Communication Data ---
-    # Dynamically align dates with In-App data so filters always work
+    # --- 3. Load or Safely Mock Communication Data ---
     min_dt = df_inapp['pt'].min()
     max_dt = df_inapp['pt'].max()
     dates = pd.date_range(start=min_dt, end=max_dt, freq='D')
-    
+    num_days = len(dates)
+
+    # Initialize fallback mock dataframe
+    fallback_comm = pd.DataFrame({
+        'date': dates,
+        'push_title': np.random.choice(['[Alert] Ride Now!', 'Weekend Special', 'Miss You!', '50% OFF', 'Flash Sale'], num_days),
+        'sends': np.random.randint(5000, 50000, size=num_days),
+        'opens': np.random.randint(500, 15000, size=num_days),
+        'clicks': np.random.randint(50, 3000, size=num_days),
+        'hour_of_day': np.random.randint(7, 22, size=num_days),
+        'channel': np.random.choice(['Push', 'Email', 'SMS'], num_days)
+    })
+    fallback_comm['unsubscribe'] = (fallback_comm['sends'] * np.random.uniform(0.001, 0.01)).astype(int)
+
+    df_comm = fallback_comm
     if os.path.exists(comm_file):
         try:
-            df_comm = pd.read_excel(comm_file)
-            if 'date' not in df_comm.columns: df_comm['date'] = dates[:len(df_comm)]
-        except:
-            df_comm = None
-    else:
-        num_days = len(dates)
-        df_comm = pd.DataFrame({
-            'date': dates,
-            'push_title': np.random.choice(['[Alert] Ride Now!', 'Weekend Special', 'Miss You!', '50% OFF', 'Flash Sale'], num_days),
-            'sends': np.random.randint(5000, 50000, size=num_days),
-            'opens': np.random.randint(500, 15000, size=num_days),
-            'clicks': np.random.randint(50, 3000, size=num_days)
-        })
-        df_comm['hour_of_day'] = np.random.randint(7, 22, size=num_days)
-        df_comm['channel'] = np.random.choice(['Push', 'Email', 'SMS'], num_days)
-        df_comm['unsubscribe'] = (df_comm['sends'] * np.random.uniform(0.001, 0.01)).astype(int)
+            read_df = pd.read_excel(comm_file)
+            if not read_df.empty and 'date' in read_df.columns:
+                read_df['date'] = pd.to_datetime(read_df['date'])
+                df_comm = read_df
+        except Exception:
+            df_comm = fallback_comm
         
     return df_inapp, df_promo, df_comm
 
@@ -111,12 +114,24 @@ try:
     # ==========================================
     # 4. Apply Filters
     # ==========================================
-    mask_inapp = ((df_inapp['pt'] >= start_dt) & (df_inapp['pt'] <= end_dt) & (df_inapp['country'].isin(selected_countries)) & (df_inapp['city_name'].isin(selected_cities)) & (df_inapp['show_pv'] >= min_shows))
-    if name_include: mask_inapp = mask_inapp & (df_inapp['campaign_name'].str.contains(name_include, case=False, na=False))
+    mask_inapp = (
+        (df_inapp['pt'] >= start_dt) & (df_inapp['pt'] <= end_dt) &
+        (df_inapp['country'].isin(selected_countries)) &
+        (df_inapp['city_name'].isin(selected_cities)) &
+        (df_inapp['show_pv'] >= min_shows)
+    )
+    if name_include:
+        mask_inapp = mask_inapp & (df_inapp['campaign_name'].str.contains(name_include, case=False, na=False))
     f_inapp = df_inapp.loc[mask_inapp]
     
-    mask_promo = ((df_promo['date'] >= pd.to_datetime(start_date)) & (df_promo['date'] <= pd.to_datetime(end_date)) & (df_promo['country'].isin(selected_countries)) & (df_promo['city_name'].isin(selected_cities)))
-    if name_include: mask_promo = mask_promo & (df_promo['promocode'].str.contains(name_include, case=False, na=False))
+    mask_promo = (
+        (df_promo['date'] >= pd.to_datetime(start_date)) & 
+        (df_promo['date'] <= pd.to_datetime(end_date)) & 
+        (df_promo['country'].isin(selected_countries)) & 
+        (df_promo['city_name'].isin(selected_cities))
+    )
+    if name_include:
+        mask_promo = mask_promo & (df_promo['promocode'].str.contains(name_include, case=False, na=False))
     f_promo = df_promo.loc[mask_promo]
     
     f_comm = df_comm[(df_comm['date'] >= pd.to_datetime(start_date)) & (df_comm['date'] <= pd.to_datetime(end_date))]
@@ -126,7 +141,12 @@ try:
     # ==========================================
     st.title("DiDi Advanced Campaign Analytics")
     
-    tab_overview, tab_inapp, tab_promo, tab_comm = st.tabs(["🌐 Executive Overview", "📱 In-App Ads", "🎟️ Promo Codes", "✉️ Communications"])
+    tab_overview, tab_inapp, tab_promo, tab_comm = st.tabs([
+        "🌐 Executive Overview", 
+        "📱 In-App Ads", 
+        "🎟️ Promo Codes", 
+        "✉️ Communications"
+    ])
     
     # ---------------------------------------------------------
     # TAB 0: EXECUTIVE OVERVIEW (10+ Charts)
@@ -134,7 +154,6 @@ try:
     with tab_overview:
         st.subheader("Cross-Channel Performance Summary")
         
-        # 1. KPI Metrics
         kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
         kpi1.metric("Total In-App Shows", f"{f_inapp['show_pv'].sum():,.0f}")
         kpi2.metric("Total In-App Clicks", f"{f_inapp['click_pv'].sum():,.0f}")
@@ -146,7 +165,6 @@ try:
         row1_col1, row1_col2 = st.columns([2, 1])
         
         with row1_col1:
-            # 2. Unified Trend Line
             st.markdown("**1. Unified Marketing ROI Trend**")
             t_inapp = f_inapp.groupby('pt')['show_pv'].sum().reset_index().rename(columns={'pt':'Date', 'show_pv':'Value'})
             t_inapp['Channel'] = 'In-App (Shows)'
@@ -158,7 +176,6 @@ try:
             st.plotly_chart(fig_unified, use_container_width=True)
             
         with row1_col2:
-            # 3. Channel Distribution Pie
             st.markdown("**2. Traffic Source Distribution**")
             pie_data = pd.DataFrame({'Channel': ['In-App', 'Comm', 'Promo'], 'Volume': [f_inapp['click_pv'].sum(), f_comm['clicks'].sum(), f_promo['usage_count'].sum()]})
             fig_pie = px.pie(pie_data, values='Volume', names='Channel', hole=0.4, color_discrete_sequence=['#4C72B0', '#55A868', '#C44E52'])
@@ -167,8 +184,7 @@ try:
         row2_col1, row2_col2, row2_col3 = st.columns(3)
         
         with row2_col1:
-            # 4. Cross-Country Radar Chart
-            st.markdown("**3. Country Performance Radar**")
+            st.markdown("**3. Engagement Balance Radar**")
             radar_data = pd.DataFrame(dict(r=[f_inapp['show_pv'].sum(), f_promo['redemption_count'].sum(), f_inapp['click_pv'].sum(), f_promo['usage_count'].sum()],
                                            theta=['Shows', 'Redemptions', 'Clicks', 'Usages']))
             fig_radar = px.line_polar(radar_data, r='r', theta='theta', line_close=True)
@@ -176,21 +192,19 @@ try:
             st.plotly_chart(fig_radar, use_container_width=True)
             
         with row2_col2:
-            # 5. Global Funnel
             st.markdown("**4. Master Conversion Funnel**")
             fig_gfunnel = go.Figure(go.Funnel(y=['Total Exposure', 'Total Interactions', 'Actual Conversions'], 
                                               x=[f_inapp['show_pv'].sum()+f_comm['sends'].sum(), f_inapp['click_pv'].sum()+f_comm['opens'].sum(), f_promo['usage_count'].sum()]))
             st.plotly_chart(fig_gfunnel, use_container_width=True)
             
         with row2_col3:
-            # 6. Overall City Contribution Bar
-            st.markdown("**5. City Contribution (Overall)**")
+            st.markdown("**5. City Exposure Leaderboard**")
             city_cont = f_inapp.groupby('city_name')['show_pv'].sum().reset_index().nlargest(5, 'show_pv')
             fig_cbar = px.bar(city_cont, x='show_pv', y='city_name', orientation='h', color='city_name')
             st.plotly_chart(fig_cbar, use_container_width=True)
 
     # ---------------------------------------------------------
-    # TAB 1: IN-APP ADS (6+ Charts + Data List)
+    # TAB 1: IN-APP ADS (6 Charts + Data List)
     # ---------------------------------------------------------
     with tab_inapp:
         st.subheader("In-App Advertising Suite")
@@ -229,7 +243,7 @@ try:
         with col5:
             st.markdown("**5. Placement Efficiency (Resource ID)**")
             res_eff = f_inapp.groupby('resource_id').agg({'show_pv':'sum', 'click_pv':'sum'}).reset_index()
-            res_eff['ctr'] = res_eff['click_pv']/res_eff['show_pv']*100
+            res_eff['ctr'] = (res_eff['click_pv']/res_eff['show_pv']*100).fillna(0)
             st.plotly_chart(px.bar(res_eff, x='resource_id', y='ctr', color='show_pv'), use_container_width=True)
             
         with col6:
@@ -238,7 +252,6 @@ try:
             fig_waterfall = go.Figure(go.Waterfall(x=waterfall_data['pt'], y=waterfall_data['show_pv'], measure=["relative"] * len(waterfall_data)))
             st.plotly_chart(fig_waterfall, use_container_width=True)
 
-        # Tab-Specific Data List
         st.markdown("---")
         st.subheader("📋 In-App Raw Data")
         st.dataframe(f_inapp[['pt', 'city_name', 'campaign_name', 'show_pv', 'click_pv', 'url']],
@@ -283,7 +296,6 @@ try:
             cum_data['Cumulative'] = cum_data['usage_count'].cumsum()
             st.plotly_chart(px.area(cum_data, x='date', y='Cumulative'), use_container_width=True)
 
-        # Tab-Specific Data List
         st.markdown("---")
         st.subheader("📋 Promo Code Raw Data")
         st.dataframe(f_promo[['date', 'city_name', 'promocode', 'redemption_count', 'usage_count']],
@@ -323,10 +335,10 @@ try:
             
         with co6:
             st.markdown("**6. CTR Distribution Density**")
-            f_comm['ctr'] = f_comm['clicks'] / f_comm['opens']
-            st.plotly_chart(px.violin(f_comm, y='ctr', box=True, points="all"), use_container_width=True)
+            f_comm_calc = f_comm.copy()
+            f_comm_calc['ctr'] = (f_comm_calc['clicks'] / f_comm_calc['opens']).replace([np.inf, -np.inf], 0).fillna(0)
+            st.plotly_chart(px.violin(f_comm_calc, y='ctr', box=True, points="all"), use_container_width=True)
 
-        # Tab-Specific Data List
         st.markdown("---")
         st.subheader("📋 Communications Raw Data")
         st.dataframe(f_comm[['date', 'channel', 'push_title', 'sends', 'opens', 'clicks', 'unsubscribe']],
