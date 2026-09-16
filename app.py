@@ -37,6 +37,8 @@ def load_data():
         df_inapp['campaign_ver'] = 'All'
     if 'data_quality_status' not in df_inapp.columns:
         df_inapp['data_quality_status'] = np.where((df_inapp['click_pv'] <= df_inapp['show_pv']), 'Valid', 'Review')
+    if 'data_quality_flag' not in df_inapp.columns:
+        df_inapp['data_quality_flag'] = np.where(df_inapp['data_quality_status'] == 'Valid', 'Passed', 'Click PV > Show PV Exception')
 
     nz_cities = ['Auckland', 'Wellington', 'Christchurch']
     df_inapp['country'] = df_inapp['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
@@ -46,8 +48,6 @@ def load_data():
     df_promo['date'] = pd.to_datetime(df_promo['date'])
     df_promo['country'] = df_promo['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
     df_promo['day_of_week'] = df_promo['date'].dt.day_name()
-    
-    # Assign the requested URL to Promo data
     df_promo['url'] = mock_url
 
     # --- 3. Load Communication Data ---
@@ -86,7 +86,6 @@ def load_data():
             
             df_comm_full = pd.concat([df_comm, df_email, df_sms], ignore_index=True)
             df_comm_full['canvas_id'] = df_comm_full['matched_canvas_id']
-            # Assign the requested URL to Communication data
             df_comm_full['url'] = mock_url
             
         except Exception as e:
@@ -119,14 +118,11 @@ try:
     col_d1, col_d2 = st.sidebar.columns(2)
     with col_d1: 
         start_date = st.date_input("Start Date", min_date)
-        # Dummy time input for UI purposes only
-        st.time_input("Start Time", datetime.time(0, 0), help="Time selection is for UI display purposes only.")
+        st.time_input("Start Time", datetime.time(0, 0), help="Display only.")
     with col_d2: 
         end_date = st.date_input("End Date", max_date)
-        # Dummy time input for UI purposes only
-        st.time_input("End Time", datetime.time(23, 59), help="Time selection is for UI display purposes only.")
+        st.time_input("End Time", datetime.time(23, 59), help="Display only.")
         
-    # Using only dates for actual dataframe filtering to prevent logic breaks
     start_dt = pd.to_datetime(start_date)
     end_dt = pd.to_datetime(end_date)
     
@@ -182,7 +178,6 @@ try:
     with tab_overview:
         st.markdown("##### 🏆 Cross-Platform Executive Summary")
         
-        # --- Pre-calculate unified DataFrames for Overview ---
         gov_inapp_ov = base_inapp[base_inapp['campaign_ver'].astype(str).str.lower() == 'all']
         gov_promo_ov = base_promo[base_promo['usage_count'] <= base_promo['redemption_count']]
         gov_comm_ov = base_comm.copy()
@@ -196,7 +191,6 @@ try:
         
         st.markdown("---")
         
-        # ROW 1: 1. Trend & 2. Donut
         or_col1, or_col2 = st.columns([2, 1])
         with or_col1:
             st.markdown("**1. Unified Marketing ROI Trend**")
@@ -213,14 +207,13 @@ try:
             fig_pie = px.pie(pie_df, values='Volume', names='Platform', hole=0.4, color_discrete_sequence=['#4C72B0', '#C44E52', '#55A868'])
             st.plotly_chart(fig_pie, use_container_width=True)
 
-        # ROW 2: 3. Funnel & 4. Radar
         st.markdown("---")
         row2_c1, row2_c2 = st.columns(2)
         with row2_c1:
             st.markdown("**3. Master Conversion Funnel**")
             total_exp = gov_inapp_ov['show_pv'].sum() + gov_promo_ov['redemption_count'].sum() + (gov_comm_ov['delivered_count'].sum() if not gov_comm_ov.empty else 0)
             total_int = gov_inapp_ov['click_pv'].sum() + gov_promo_ov['usage_count'].sum() + (gov_comm_ov['clicks'].sum() if not gov_comm_ov.empty else 0)
-            total_conv = gov_promo_ov['usage_count'].sum() # Assuming usage is ultimate conversion here
+            total_conv = gov_promo_ov['usage_count'].sum()
             fig_funnel_all = go.Figure(go.Funnel(y=['Exposure / Claims', 'Interactions / Clicks', 'Ultimate Conversions'], x=[total_exp, total_int, total_conv], marker={"color": ["#4C72B0", "#55A868", "#C44E52"]}))
             st.plotly_chart(fig_funnel_all, use_container_width=True)
         with row2_c2:
@@ -232,7 +225,6 @@ try:
             fig_radar.update_traces(fill='toself', line_color='#8172B3')
             st.plotly_chart(fig_radar, use_container_width=True)
 
-        # ROW 3: 5. City Bar & 6. Efficiency Bar
         st.markdown("---")
         row3_c1, row3_c2 = st.columns(2)
         with row3_c1:
@@ -251,7 +243,6 @@ try:
             fig_eff = px.bar(eff_df, x='Platform', y='Rate (%)', color='Platform', color_discrete_sequence=['#4C72B0', '#C44E52', '#55A868'])
             st.plotly_chart(fig_eff, use_container_width=True)
 
-        # ROW 4: 7. Day Heatmap & 8. Cumulative Area
         st.markdown("---")
         row4_c1, row4_c2 = st.columns(2)
         with row4_c1:
@@ -278,7 +269,6 @@ try:
                 fig_cum_all = px.area(cum_all, x='Date', y='Cumulative', color_discrete_sequence=['#8172B3'])
                 st.plotly_chart(fig_cum_all, use_container_width=True)
 
-        # Build Unified Campaign Matrix DataFrame
         ia_mat = gov_inapp_ov.groupby('campaign_name').agg({'show_pv':'sum', 'click_pv':'sum'}).reset_index().rename(columns={'campaign_name':'Campaign/Code', 'show_pv':'Exposure/Deliveries', 'click_pv':'Interactions'})
         ia_mat['Platform'] = 'In-App'
         
@@ -294,7 +284,6 @@ try:
         unified_matrix = pd.concat([ia_mat, pr_mat, co_mat], ignore_index=True)
         unified_matrix['Efficiency Rate (%)'] = (unified_matrix['Interactions'] / unified_matrix['Exposure/Deliveries'] * 100).fillna(0)
 
-        # ROW 5: 9. Platform Scatter & 10. Cross-Platform Leaderboard
         st.markdown("---")
         row5_c1, row5_c2 = st.columns(2)
         with row5_c1:
@@ -310,7 +299,6 @@ try:
                 fig_top15.update_layout(height=400)
                 st.plotly_chart(fig_top15, use_container_width=True)
 
-        # ROW 6: Cross-Platform Campaign Performance Matrix
         st.markdown("---")
         st.markdown("##### 🏆 Cross-Platform Campaign Performance Matrix (Full View)")
         st.dataframe(
@@ -325,11 +313,9 @@ try:
             use_container_width=True, hide_index=True
         )
 
-        # ROW 7: Unified Raw Data Table
         st.markdown("---")
         st.markdown("##### 📋 Unified Raw Data (Actionable View)")
         
-        # Build Unified Raw Data
         raw_ia = gov_inapp_ov[['pt', 'city_name', 'campaign_name', 'show_pv', 'click_pv', 'url']].rename(columns={'pt':'Date', 'city_name':'City', 'campaign_name':'Campaign/Code', 'show_pv':'Exposure/Deliveries', 'click_pv':'Interactions', 'url':'URL'})
         raw_ia['Platform'] = 'In-App'
         
@@ -343,7 +329,6 @@ try:
             raw_co = pd.DataFrame()
             
         unified_raw = pd.concat([raw_ia, raw_pr, raw_co], ignore_index=True)
-        # Reorder columns
         unified_raw = unified_raw[['Date', 'Platform', 'City', 'Campaign/Code', 'Exposure/Deliveries', 'Interactions', 'URL']]
         
         st.dataframe(
@@ -360,48 +345,88 @@ try:
             use_container_width=True, hide_index=True
         )
 
-    # ---------------- TAB 1: IN-APP ----------------
+    # ---------------- TAB 1: IN-APP (Gateway 2 Governed Upgrade) ----------------
     with tab_inapp:
         st.subheader("In-App Advertising Suite")
-        st.markdown("##### Data Governance Controls")
-        col_ia1, col_ia2 = st.columns(2)
+        st.markdown("*Gateway 2 Governed In-App reporting module with transparent data-quality review controls.*")
+        
+        # In-App Local Governance Controls
+        st.markdown("##### In-App Governance Controls")
+        col_ia1, col_ia2, col_ia3 = st.columns(3)
         inapp_version = col_ia1.selectbox("Campaign Version", ["'All' Only (Prevents Duplication)", "Raw Data (Include All Versions)"])
-        inapp_quality = col_ia2.checkbox("Exclude Anomalies (Valid Only)", value=True, help="Removes invalid rows (e.g., Clicks > Shows).")
+        status_filter = col_ia2.selectbox("Data Quality Status", ["All (Valid & Review)", "Valid Only", "Review Only"])
         
         gov_inapp = base_inapp.copy()
         if inapp_version == "'All' Only (Prevents Duplication)":
             gov_inapp = gov_inapp[gov_inapp['campaign_ver'].astype(str).str.lower() == 'all']
-        if inapp_quality:
+        if status_filter == "Valid Only":
             gov_inapp = gov_inapp[gov_inapp['data_quality_status'].str.lower() == 'valid']
-        
+        elif status_filter == "Review Only":
+            gov_inapp = gov_inapp[gov_inapp['data_quality_status'].str.lower() == 'review']
+
+        # 1. KPI Strip
         st.markdown("---")
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown("**1. Campaign Volume Treemap**")
-            tree_data = gov_inapp.groupby(['campaign_id', 'campaign_name'])['show_pv'].sum().reset_index().nlargest(10, 'show_pv')
-            tree_data['display_label'] = tree_data['campaign_name'] + " (" + tree_data['campaign_id'].astype(str).str[-4:] + ")"
-            st.plotly_chart(px.treemap(tree_data, path=[px.Constant("Campaigns"), 'display_label'], values='show_pv', color='show_pv', color_continuous_scale='Blues'), use_container_width=True)
-        with col2:
-            st.markdown("**2. 4-Quadrant Performance Matrix**")
-            quad_data = gov_inapp.groupby(['campaign_id', 'campaign_name']).agg({'show_pv': 'sum', 'click_pv': 'sum'}).reset_index()
-            quad_data['ctr'] = (quad_data['click_pv'] / quad_data['show_pv'] * 100).fillna(0)
-            fig_matrix = px.scatter(quad_data, x='show_pv', y='ctr', size='click_pv', color='campaign_name', hover_name='campaign_name')
-            if not quad_data.empty:
-                fig_matrix.add_hline(y=quad_data['ctr'].median(), line_dash="dot", line_color="gray")
-                fig_matrix.add_vline(x=quad_data['show_pv'].median(), line_dash="dot", line_color="gray")
-            st.plotly_chart(fig_matrix, use_container_width=True)
-            
+        st.markdown("##### 1. In-App KPI Strip")
+        total_shows = gov_inapp['show_pv'].sum()
+        total_clicks = gov_inapp['click_pv'].sum()
+        daily_show_uv = gov_inapp['show_uv'].sum() # Label as daily unique viewers per teammate rule
+        daily_click_uv = gov_inapp['click_uv'].sum()
+        inapp_ctr = (total_clicks / total_shows * 100) if total_shows > 0 else 0
+        review_count = len(gov_inapp[gov_inapp['data_quality_status'].str.lower() == 'review'])
+
+        ik1, ik2, ik3, ik4, ik5, ik6 = st.columns(6)
+        ik1.metric("Show PV", f"{total_shows:,.0f}")
+        ik2.metric("Daily Show UV", f"{daily_show_uv:,.0f}")
+        ik3.metric("Click PV", f"{total_clicks:,.0f}")
+        ik4.metric("Daily Click UV", f"{daily_click_uv:,.0f}")
+        ik5.metric("CTR (%)", f"{inapp_ctr:.2f}%")
+        ik6.metric("Review Rows", f"{review_count:,.0f}")
+
+        # 2. Trend View & Funnel View
+        st.markdown("---")
+        st.markdown("##### 2. Trend & Funnel Views")
+        it_col1, it_col2 = st.columns(2)
+        with it_col1:
+            st.markdown("**Daily Show PV vs Click PV Trend**")
+            trend_ia = gov_inapp.groupby('pt')[['show_pv', 'click_pv']].sum().reset_index()
+            fig_ia_trend = px.line(trend_ia, x='pt', y=['show_pv', 'click_pv'], markers=True, labels={'value':'Volume', 'pt':'Date', 'variable':'Metric'})
+            st.plotly_chart(fig_ia_trend, use_container_width=True)
+        with it_col2:
+            st.markdown("**Master Exposure-to-Click Funnel**")
+            fig_ia_funnel = go.Figure(go.Funnel(y=['Show PV', 'Click PV'], x=[total_shows, total_clicks], marker={"color": ["#4C72B0", "#55A868"]}))
+            st.plotly_chart(fig_ia_funnel, use_container_width=True)
+
+        # 3. Comparison View & Quality View
+        st.markdown("---")
+        st.markdown("##### 3. Comparison & Quality Exception Views")
+        ic_col1, ic_col2 = st.columns(2)
+        with ic_col1:
+            st.markdown("**Campaign Scale vs Engagement Ranking**")
+            camp_rank = gov_inapp.groupby('campaign_name').agg({'show_pv':'sum', 'click_pv':'sum'}).reset_index()
+            camp_rank['CTR (%)'] = (camp_rank['click_pv'] / camp_rank['show_pv'] * 100).fillna(0)
+            st.dataframe(camp_rank.sort_values('show_pv', ascending=False).head(10), use_container_width=True, hide_index=True)
+        with ic_col2:
+            st.markdown("**Data-Quality Review Flags Breakdown**")
+            review_df = gov_inapp[gov_inapp['data_quality_status'].str.lower() == 'review']
+            if not review_df.empty:
+                flag_counts = review_df['data_quality_flag'].value_counts().reset_index()
+                flag_counts.columns = ['Exception Reason', 'Record Count']
+                st.dataframe(flag_counts, use_container_width=True, hide_index=True)
+            else:
+                st.success("No review anomalies found under current filters.")
+
         # In-App Actionable Raw Data Table with URL
         st.markdown("---")
         st.markdown("**📋 In-App Raw Data (Actionable View)**")
         st.dataframe(
-            gov_inapp[['pt', 'city_name', 'campaign_name', 'show_pv', 'click_pv', 'url']],
+            gov_inapp[['pt', 'city_name', 'campaign_name', 'show_pv', 'click_pv', 'data_quality_status', 'url']],
             column_config={
                 "pt": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"),
                 "url": st.column_config.LinkColumn("Ad URL", display_text="🔗 View Ad"),
                 "campaign_name": "Campaign Name",
-                "show_pv": "Shows",
-                "click_pv": "Clicks"
+                "show_pv": "Show PV",
+                "click_pv": "Click PV",
+                "data_quality_status": "Status"
             },
             use_container_width=True, hide_index=True
         )
@@ -425,7 +450,6 @@ try:
         if promo_quality:
             gov_promo = gov_promo[gov_promo['usage_count'] <= gov_promo['redemption_count']]
 
-        # 1. Overall Promo KPIs
         st.markdown("---")
         st.markdown("##### 1. Overall Promotional KPIs")
         total_redemptions = gov_promo['redemption_count'].sum()
@@ -439,7 +463,6 @@ try:
         pkpi3.metric("Active Promo Codes", f"{active_promos:,.0f}")
         pkpi4.metric("Overall Utilisation Rate", f"{overall_util_rate:.1f}%")
 
-        # 2. Leaderboard & Visuals
         st.markdown("---")
         st.markdown("##### 2. Top-Performing Promo Codes & Distribution")
         
@@ -484,7 +507,6 @@ try:
             use_container_width=True, hide_index=True
         )
 
-        # 3. Time Series & NEW Charts
         st.markdown("---")
         st.markdown("##### 3. Market Trends & Predictive Insights")
         
@@ -541,7 +563,6 @@ try:
                 fig_donut = px.pie(city_agg, values='usage_count', names='city_name', hole=0.4, title="Market Share of Promo Usage", color_discrete_sequence=px.colors.qualitative.Pastel)
                 st.plotly_chart(fig_donut, use_container_width=True)
 
-        # Promo Codes Actionable Raw Data Table with URL
         st.markdown("---")
         st.markdown("**📋 Promo Codes Raw Data (Actionable View)**")
         
@@ -653,7 +674,8 @@ try:
                     "Clicks": st.column_config.NumberColumn("Clicks", format="%d"),
                     "Rate (%)": st.column_config.NumberColumn("Delivered-to-Click Rate", format="%.2f%%")
                 },
-                use_container_width=True, hide_index=True
+                use_container_width=True, 
+                hide_index=True
             )
 
             st.markdown("---")
@@ -765,7 +787,6 @@ try:
                         heat_df = heat_df.reindex([d for d in days_order if d in heat_df.index])
                         st.plotly_chart(px.imshow(heat_df, aspect="auto", color_continuous_scale='Blues', title="Push Shows Heatmap (Day × Hour)"), use_container_width=True)
 
-            # Communications Actionable Raw Data Table
             st.markdown("---")
             st.markdown("**📋 Communications Raw Data (Actionable View)**")
             st.dataframe(
