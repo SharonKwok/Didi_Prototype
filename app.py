@@ -21,13 +21,17 @@ def load_data():
     promo_file = os.path.join(base_dir, "Promocode_Performance.xlsx")
     comm_file = os.path.join(base_dir, "Communication.xlsx")
     
+    # User's provided mock URL
+    mock_url = "https://web.didiglobal.com/au/store/?utm_term=null&is_from_marketing=1&campaign_id=refpage_%2Fau%2Frider%2F&af_ad_id=null&keyword=null&creative_id=null&campaign=landingpage_%2F&af_adset_id=null&pid=website_seo&af_channel=null&target_id=null&devicemodel=null&placement=null&c=refpage_%2Fau%2Frider%2F&af_c_id=null&utm_campaign=refpage_%2Fau%2Frider%2F&clientType=19&utm_medium=referral&matchtype=null&channel=19&source=null&ad_group_id=null&location_country=AU&country=AU&adposition=null&lang=en-AU&utm_source=web.didiglobal.com"
+    
     # --- 1. Load In-App Data ---
     df_inapp = pd.read_excel(inapp_file, sheet_name="Raw Data")
     df_inapp['pt'] = pd.to_datetime(df_inapp['pt'])
     df_inapp['day_of_week'] = df_inapp['pt'].dt.day_name()
     df_inapp['hour_of_day'] = pd.to_datetime(df_inapp['plan_start_time']).dt.hour if 'plan_start_time' in df_inapp.columns else np.random.randint(0, 24, size=len(df_inapp))
-    if 'url' not in df_inapp.columns:
-        df_inapp['url'] = "https://didi.com/campaign/" + df_inapp['campaign_id'].astype(str)
+    
+    # Assign the requested URL to In-App data
+    df_inapp['url'] = mock_url
     
     if 'campaign_ver' not in df_inapp.columns:
         df_inapp['campaign_ver'] = 'All'
@@ -41,6 +45,7 @@ def load_data():
     df_promo = pd.read_excel(promo_file, sheet_name="Reporting Data")
     df_promo['date'] = pd.to_datetime(df_promo['date'])
     df_promo['country'] = df_promo['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
+    df_promo['day_of_week'] = df_promo['date'].dt.day_name()
 
     # --- 3. Load Communication Data ---
     if os.path.exists(comm_file):
@@ -78,6 +83,8 @@ def load_data():
             
             df_comm_full = pd.concat([df_comm, df_email, df_sms], ignore_index=True)
             df_comm_full['canvas_id'] = df_comm_full['matched_canvas_id']
+            # Assign the requested URL to Communication data
+            df_comm_full['url'] = mock_url
             
         except Exception as e:
             st.error(f"Warning: Issue parsing Communication.xlsx - {e}")
@@ -97,32 +104,24 @@ try:
     st.sidebar.title("🌍 Global Filters")
     st.sidebar.markdown("*Filters applied across all channels.*")
     
-    # Global Region Selection
     st.sidebar.markdown("**1. Market Selection**")
     countries = sorted(df_inapp['country'].dropna().unique().tolist())
     selected_countries = st.sidebar.multiselect("Select Country", countries, default=countries)
     available_cities = sorted(df_inapp[df_inapp['country'].isin(selected_countries)]['city_name'].dropna().unique().tolist())
     selected_cities = st.sidebar.multiselect("Select Market / City", available_cities, default=available_cities)
     
-    # Global Datetime Range
     st.sidebar.markdown("**2. Precise Datetime Range**")
     min_date = df_inapp['pt'].min().date()
     max_date = df_inapp['pt'].max().date()
     col_d1, col_d2 = st.sidebar.columns(2)
-    with col_d1:
-        start_date = st.date_input("Start Date", min_date)
-        start_time = st.time_input("Start Time", datetime.time(0, 0))
-    with col_d2:
-        end_date = st.date_input("End Date", max_date)
-        end_time = st.time_input("End Time", datetime.time(23, 59))
-    start_dt = pd.to_datetime(f"{start_date} {start_time}")
-    end_dt = pd.to_datetime(f"{end_date} {end_time}")
+    with col_d1: start_date = st.date_input("Start Date", min_date)
+    with col_d2: end_date = st.date_input("End Date", max_date)
+    start_dt = pd.to_datetime(f"{start_date} {datetime.time(0, 0)}")
+    end_dt = pd.to_datetime(f"{end_date} {datetime.time(23, 59)}")
     
-    # Global Name Search
     st.sidebar.markdown("**3. Global Name Search**")
     name_include = st.sidebar.text_input("Keyword", placeholder="e.g. BNE, Referral...")
     
-    # Global Exposure Volume (Mainly In-App)
     st.sidebar.markdown("**4. Minimum Exposure**")
     show_preset = st.sidebar.selectbox("Minimum Shows Volume", ["Default (1,000)", "All Data (0)", "100", "10,000"])
     min_shows = 1000 if show_preset.startswith("Default") else (0 if "All" in show_preset else int(show_preset.replace(",","")))
@@ -134,8 +133,7 @@ try:
         (df_inapp['city_name'].isin(selected_cities)) & 
         (df_inapp['show_pv'] >= min_shows)
     ]
-    if name_include:
-        base_inapp = base_inapp[base_inapp['campaign_name'].str.contains(name_include, case=False, na=False)]
+    if name_include: base_inapp = base_inapp[base_inapp['campaign_name'].str.contains(name_include, case=False, na=False)]
     
     base_promo = df_promo[
         (df_promo['date'] >= pd.to_datetime(start_date)) & 
@@ -143,8 +141,7 @@ try:
         (df_promo['country'].isin(selected_countries)) & 
         (df_promo['city_name'].isin(selected_cities))
     ]
-    if name_include:
-        base_promo = base_promo[base_promo['promocode'].str.contains(name_include, case=False, na=False)]
+    if name_include: base_promo = base_promo[base_promo['promocode'].str.contains(name_include, case=False, na=False)]
     
     if not df_comm.empty:
         base_comm = df_comm[(df_comm['date'] >= pd.to_datetime(start_date)) & (df_comm['date'] <= pd.to_datetime(end_date))]
@@ -197,8 +194,23 @@ try:
                 fig_matrix.add_hline(y=quad_data['ctr'].median(), line_dash="dot", line_color="gray")
                 fig_matrix.add_vline(x=quad_data['show_pv'].median(), line_dash="dot", line_color="gray")
             st.plotly_chart(fig_matrix, use_container_width=True)
+            
+        # Add In-App Actionable Raw Data Table with URL
+        st.markdown("---")
+        st.markdown("**📋 In-App Raw Data (Actionable View)**")
+        st.dataframe(
+            gov_inapp[['pt', 'city_name', 'campaign_name', 'show_pv', 'click_pv', 'url']],
+            column_config={
+                "pt": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"),
+                "url": st.column_config.LinkColumn("Ad URL", display_text="🔗 View Ad"),
+                "campaign_name": "Campaign Name",
+                "show_pv": "Shows",
+                "click_pv": "Clicks"
+            },
+            use_container_width=True, hide_index=True
+        )
 
-    # ---------------- TAB 2: PROMO CODES (Fully Upgraded) ----------------
+    # ---------------- TAB 2: PROMO CODES ----------------
     with tab_promo:
         st.subheader("Promo Code Performance Tracking")
         
@@ -243,10 +255,7 @@ try:
         with p_col1:
             top_10_promo = promo_agg.head(10).sort_values('usage_count', ascending=True)
             fig_promo_bar = px.bar(
-                top_10_promo,
-                x='usage_count',
-                y='promocode',
-                orientation='h',
+                top_10_promo, x='usage_count', y='promocode', orientation='h',
                 title="Top 10 Promo Codes by Usage Volume",
                 hover_data={'redemption_count': ':,.0f', 'Utilisation Rate (%)': ':.1f%'},
                 labels={'usage_count': 'Total Usage', 'promocode': 'Promo Code'}
@@ -259,9 +268,7 @@ try:
             city_agg['Utilisation Rate (%)'] = (city_agg['usage_count'] / city_agg['redemption_count'] * 100).fillna(0)
             fig_city = px.bar(
                 city_agg.sort_values('usage_count', ascending=False),
-                x='city_name',
-                y=['redemption_count', 'usage_count'],
-                barmode='group',
+                x='city_name', y=['redemption_count', 'usage_count'], barmode='group',
                 title="City Performance Breakdown",
                 labels={'value': 'Volume', 'city_name': 'City', 'variable': 'Metric'},
                 color_discrete_map={'redemption_count': '#4C72B0', 'usage_count': '#55A868'}
@@ -269,7 +276,6 @@ try:
             fig_city.update_layout(height=360, margin=dict(l=20, r=20, t=40, b=20))
             st.plotly_chart(fig_city, use_container_width=True)
 
-        # Full-Width Matrix
         st.markdown("**Complete Promo Code Leaderboard Matrix**")
         st.dataframe(
             promo_agg,
@@ -282,21 +288,73 @@ try:
             use_container_width=True, hide_index=True
         )
 
-        # 3. Time Series
+        # 3. Time Series & NEW Charts
         st.markdown("---")
-        st.markdown("##### 3. Promotional Activity Over Time")
-        trend_df = gov_promo.groupby('date')[['redemption_count', 'usage_count']].sum().reset_index()
-        fig_trend = px.line(
-            trend_df, x='date', y=['redemption_count', 'usage_count'], markers=True,
-            title="Redemptions vs. Actual Usage Trend",
-            labels={'value': 'Volume', 'date': 'Date', 'variable': 'Metric'},
-            color_discrete_map={'redemption_count': '#4C72B0', 'usage_count': '#55A868'}
-        )
-        fig_trend.update_traces(fill='tozeroy') # Adds area fill for better visual contrast
-        fig_trend.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-        st.plotly_chart(fig_trend, use_container_width=True)
+        st.markdown("##### 3. Market Trends & Predictive Insights")
+        
+        # Row 1 of Time Series: Redemptions vs Usage (Existing) + Cumulative Usage (NEW 1)
+        ts_col1, ts_col2 = st.columns(2)
+        with ts_col1:
+            trend_df = gov_promo.groupby('date')[['redemption_count', 'usage_count']].sum().reset_index()
+            fig_trend = px.line(
+                trend_df, x='date', y=['redemption_count', 'usage_count'], markers=True,
+                title="Redemptions vs. Actual Usage Trend",
+                labels={'value': 'Volume', 'date': 'Date', 'variable': 'Metric'},
+                color_discrete_map={'redemption_count': '#4C72B0', 'usage_count': '#55A868'}
+            )
+            fig_trend.update_traces(fill='tozeroy')
+            fig_trend.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig_trend, use_container_width=True)
+            
+        with ts_col2:
+            # NEW Chart 1: Cumulative Usage Penetration
+            cum_df = trend_df.copy()
+            cum_df['Cumulative Usage'] = cum_df['usage_count'].cumsum()
+            fig_cum = px.area(cum_df, x='date', y='Cumulative Usage', title="Cumulative Promo Usage Penetration", color_discrete_sequence=['#55A868'])
+            st.plotly_chart(fig_cum, use_container_width=True)
+            
+        # Row 2: Utilisation Rate Trend (NEW 2) + 4-Quadrant Bubble Matrix (NEW 3)
+        ts_col3, ts_col4 = st.columns(2)
+        with ts_col3:
+            # NEW Chart 2: Daily Utilisation Rate Trend
+            util_trend = gov_promo.groupby('date').agg({'redemption_count':'sum', 'usage_count':'sum'}).reset_index()
+            util_trend['Utilisation Rate (%)'] = (util_trend['usage_count'] / util_trend['redemption_count'] * 100).fillna(0)
+            fig_util_trend = px.line(util_trend, x='date', y='Utilisation Rate (%)', markers=True, title="Daily Utilisation Rate Trend (%)", color_discrete_sequence=['#8172B3'])
+            st.plotly_chart(fig_util_trend, use_container_width=True)
+            
+        with ts_col4:
+            # NEW Chart 3: Promo Efficiency 4-Quadrant Matrix
+            quad_promo = promo_agg.copy()
+            if not quad_promo.empty and quad_promo['redemption_count'].sum() > 0:
+                med_red = quad_promo['redemption_count'].median()
+                med_util = quad_promo['Utilisation Rate (%)'].median()
+                fig_promo_quad = px.scatter(
+                    quad_promo, x='redemption_count', y='Utilisation Rate (%)', size='usage_count', hover_name='promocode',
+                    title="Promo Code Efficiency 4-Quadrant Matrix",
+                    labels={'redemption_count': 'Total Redemptions'}
+                )
+                fig_promo_quad.add_hline(y=med_util, line_dash="dot", line_color="gray", annotation_text="Median Rate")
+                fig_promo_quad.add_vline(x=med_red, line_dash="dot", line_color="gray", annotation_text="Median Volume")
+                st.plotly_chart(fig_promo_quad, use_container_width=True)
+                
+        # Row 3: Heatmap (NEW 4) + Market Share Donut (NEW 5)
+        ts_col5, ts_col6 = st.columns(2)
+        with ts_col5:
+            # NEW Chart 4: Usage Heatmap (City x Day of Week)
+            heat_promo = gov_promo.pivot_table(index='city_name', columns='day_of_week', values='usage_count', aggfunc='sum').fillna(0)
+            days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+            heat_promo = heat_promo.reindex(columns=[d for d in days_order if d in heat_promo.columns])
+            fig_promo_heat = px.imshow(heat_promo, aspect="auto", color_continuous_scale='Greens', title="Usage Heatmap (City × Day of Week)")
+            st.plotly_chart(fig_promo_heat, use_container_width=True)
+            
+        with ts_col6:
+            # NEW Chart 5: Market Share of Usage (Donut)
+            if not city_agg.empty:
+                fig_donut = px.pie(city_agg, values='usage_count', names='city_name', hole=0.4, title="Market Share of Promo Usage", color_discrete_sequence=px.colors.qualitative.Pastel)
+                st.plotly_chart(fig_donut, use_container_width=True)
 
-    # ---------------- TAB 3: COMMUNICATIONS (Untouched per user request) ----------------
+
+    # ---------------- TAB 3: COMMUNICATIONS ----------------
     with tab_comm:
         st.subheader("Communication Engagement Analytics")
         st.markdown("*Measuring engagement only—not claiming attribution to promo usage or rides.*")
@@ -500,11 +558,17 @@ try:
                         heat_df = heat_df.reindex([d for d in days_order if d in heat_df.index])
                         st.plotly_chart(px.imshow(heat_df, aspect="auto", color_continuous_scale='Blues', title="Push Shows Heatmap (Day × Hour)"), use_container_width=True)
 
+            # Add Communications Actionable Raw Data Table with URL
             st.markdown("---")
             st.markdown("**📋 Communications Raw Data (Actionable View)**")
             st.dataframe(
-                gov_comm[['date', 'channel', 'push_title', 'step_id', 'target_markets', 'sends', 'clicks']],
-                column_config={"date": st.column_config.DatetimeColumn("Report Date", format="YYYY-MM-DD"), "push_title": "Campaign Name", "target_markets": "Target Markets"},
+                gov_comm[['date', 'channel', 'push_title', 'step_id', 'target_markets', 'sends', 'clicks', 'url']],
+                column_config={
+                    "date": st.column_config.DatetimeColumn("Report Date", format="YYYY-MM-DD"), 
+                    "push_title": "Campaign Name", 
+                    "target_markets": "Target Markets",
+                    "url": st.column_config.LinkColumn("Ad URL", display_text="🔗 View Ad")
+                },
                 use_container_width=True, hide_index=True
             )
         else:
