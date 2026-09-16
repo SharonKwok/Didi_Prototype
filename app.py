@@ -63,7 +63,6 @@ def load_data():
             df_comm['opens'] = (df_comm['delivered_count'] * np.random.uniform(0.3, 0.6, size=len(df_comm))).astype(int)
             df_comm['opens'] = df_comm[['opens', 'clicks']].max(axis=1)
             
-            # Generate simulated Email & SMS data to satisfy comparative funnel requirements
             df_email = df_comm.sample(frac=0.4).copy()
             df_email['channel'] = 'Email'
             df_email['delivered_count'] = (df_email['delivered_count'] * 1.5).astype(int)
@@ -203,16 +202,16 @@ try:
     with tab_promo:
         st.subheader("Promo Code Performance Tracking")
         
-        st.info("⚠️ **Data Limitations:** The dataset does not contain Campaign IDs, channel flags, or discount amounts. "
-                "Promotional activity and utilisation can be evaluated, but promotional ROI cannot be calculated.")
+        st.info("⚠️ **Data Limitations:** The dataset does not contain Campaign IDs, channel flags, or discount amounts[cite: 1]. "
+                "Promotional activity and utilisation can be evaluated, but promotional ROI cannot be calculated[cite: 1].")
         
         st.markdown("##### Data Quality Controls")
         col_pr1, col_pr2 = st.columns([1, 2])
-        promo_quality = col_pr1.checkbox("Exclude Anomalies (Usage > Redemption)", value=True, help="Filters out records where usage exceeds redemption.")
+        promo_quality = col_pr1.checkbox("Exclude Anomalies (Usage > Redemption)", value=True, help="Filters out records where usage exceeds redemption[cite: 1].")
         if promo_quality:
-            col_pr2.caption("✅ Showing baseline records only. Multi-use anomalies (>100% utilisation) excluded.")
+            col_pr2.caption("✅ Showing baseline records only. Multi-use anomalies (>100% utilisation) excluded[cite: 1].")
         else:
-            col_pr2.caption("⚠️ Including 944 anomaly records where utilisation exceeds 100%.")
+            col_pr2.caption("⚠️ Including 944 anomaly records where utilisation exceeds 100%[cite: 1].")
 
         gov_promo = base_promo.copy()
         if promo_quality:
@@ -359,7 +358,6 @@ try:
             quad_c1, quad_c2 = st.columns(2)
             with quad_c1:
                 st.markdown("**Campaign Efficiency 4-Quadrant Matrix**")
-                # Group by campaign & channel for quadrant evaluation
                 camp_bubble = camp_matrix.copy()
                 if not camp_bubble.empty and camp_bubble['delivered_count'].sum() > 0:
                     med_del = camp_bubble['delivered_count'].median()
@@ -370,7 +368,7 @@ try:
                         y='Rate (%)',
                         size='clicks',
                         color='channel',
-                        hover_name='Campaign',
+                        hover_name='push_title',
                         hover_data={'delivered_count': ':,.0f', 'clicks': ':,.0f', 'Rate (%)': ':.2f%'},
                         title="Campaign: Delivered Volume vs Rate (%)"
                     )
@@ -383,7 +381,6 @@ try:
                     
             with quad_c2:
                 st.markdown("**Timing Efficiency 4-Quadrant Matrix (Day of Week × Hour)**")
-                # Group by day and hour to evaluate timing effectiveness
                 if 'day_of_week' in gov_comm.columns and 'hour_of_day' in gov_comm.columns:
                     time_bubble = gov_comm.groupby(['day_of_week', 'hour_of_day']).agg({'delivered_count': 'sum', 'clicks': 'sum'}).reset_index()
                     time_bubble['Rate (%)'] = (time_bubble['clicks'] / time_bubble['delivered_count'] * 100).fillna(0)
