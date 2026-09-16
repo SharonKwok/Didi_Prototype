@@ -315,13 +315,12 @@ try:
                 fig_trend = px.line(trend_df, x='date', y='delivered_count', color='channel', title="Performance Over Time (Delivered Volume)", markers=True)
                 st.plotly_chart(fig_trend, use_container_width=True)
 
-            # Campaign Performance Section: Visual + Full-Width Matrix
+            # Campaign Performance Section: Horizontal Bar Chart + Full-Width Matrix
             st.markdown("---")
             st.markdown("##### 📊 Campaign Performance Analysis")
             camp_matrix = gov_comm.groupby(['push_title', 'channel']).agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index()
             camp_matrix['Rate (%)'] = (camp_matrix['clicks'] / camp_matrix['delivered_count'] * 100).fillna(0)
             
-            # Accompanying Visual: Horizontal Bar Chart of Top 10 Campaigns
             top_camps = camp_matrix.nlargest(10, 'Rate (%)').sort_values('Rate (%)', ascending=True)
             fig_top_camps = px.bar(
                 top_camps, 
@@ -336,7 +335,6 @@ try:
             fig_top_camps.update_layout(height=360, margin=dict(l=20, r=20, t=40, b=20))
             st.plotly_chart(fig_top_camps, use_container_width=True)
 
-            # Full-Width Actionable Matrix
             st.markdown("**Campaign Performance Matrix (Full View)**")
             st.dataframe(
                 camp_matrix.sort_values('delivered_count', ascending=False).rename(
@@ -352,6 +350,66 @@ try:
                 use_container_width=True, 
                 hide_index=True
             )
+
+            # --- 4-Quadrant Bubble Matrix Section ---
+            st.markdown("---")
+            st.markdown("##### 🎯 4-Quadrant Bubble Matrix Analysis")
+            st.caption("Dotted lines indicate medians. Top-right = High Volume & High CTR (Core Stars); Top-left = Low Volume & High CTR (High Potential).")
+            
+            quad_c1, quad_c2 = st.columns(2)
+            with quad_c1:
+                st.markdown("**Campaign Efficiency 4-Quadrant Matrix**")
+                # Group by campaign & channel for quadrant evaluation
+                camp_bubble = camp_matrix.copy()
+                if not camp_bubble.empty and camp_bubble['delivered_count'].sum() > 0:
+                    med_del = camp_bubble['delivered_count'].median()
+                    med_rate = camp_bubble['Rate (%)'].median()
+                    fig_camp_bubble = px.scatter(
+                        camp_bubble,
+                        x='delivered_count',
+                        y='Rate (%)',
+                        size='clicks',
+                        color='channel',
+                        hover_name='Campaign',
+                        hover_data={'delivered_count': ':,.0f', 'clicks': ':,.0f', 'Rate (%)': ':.2f%'},
+                        title="Campaign: Delivered Volume vs Rate (%)"
+                    )
+                    fig_camp_bubble.add_hline(y=med_rate, line_dash="dot", line_color="gray", annotation_text="Median Rate")
+                    fig_camp_bubble.add_vline(x=med_del, line_dash="dot", line_color="gray", annotation_text="Median Volume")
+                    fig_camp_bubble.update_layout(margin=dict(l=20, r=20, t=40, b=20), height=400)
+                    st.plotly_chart(fig_camp_bubble, use_container_width=True)
+                else:
+                    st.info("Insufficient volume to plot Campaign matrix.")
+                    
+            with quad_c2:
+                st.markdown("**Timing Efficiency 4-Quadrant Matrix (Day of Week × Hour)**")
+                # Group by day and hour to evaluate timing effectiveness
+                if 'day_of_week' in gov_comm.columns and 'hour_of_day' in gov_comm.columns:
+                    time_bubble = gov_comm.groupby(['day_of_week', 'hour_of_day']).agg({'delivered_count': 'sum', 'clicks': 'sum'}).reset_index()
+                    time_bubble['Rate (%)'] = (time_bubble['clicks'] / time_bubble['delivered_count'] * 100).fillna(0)
+                    time_bubble['Time Slot'] = time_bubble['day_of_week'] + " " + time_bubble['hour_of_day'].astype(str) + ":00"
+                    
+                    if not time_bubble.empty and time_bubble['delivered_count'].sum() > 0:
+                        med_time_del = time_bubble['delivered_count'].median()
+                        med_time_rate = time_bubble['Rate (%)'].median()
+                        fig_time_bubble = px.scatter(
+                            time_bubble,
+                            x='delivered_count',
+                            y='Rate (%)',
+                            size='clicks',
+                            color='day_of_week',
+                            hover_name='Time Slot',
+                            hover_data={'hour_of_day': True, 'delivered_count': ':,.0f', 'clicks': ':,.0f', 'Rate (%)': ':.2f%'},
+                            title="Timing: Slot Volume vs Rate (%)"
+                        )
+                        fig_time_bubble.add_hline(y=med_time_rate, line_dash="dot", line_color="gray", annotation_text="Median Rate")
+                        fig_time_bubble.add_vline(x=med_time_del, line_dash="dot", line_color="gray", annotation_text="Median Volume")
+                        fig_time_bubble.update_layout(margin=dict(l=20, r=20, t=40, b=20), height=400)
+                        st.plotly_chart(fig_time_bubble, use_container_width=True)
+                    else:
+                        st.info("Insufficient volume to plot Timing matrix.")
+                else:
+                    st.info("Time fields unavailable for Timing matrix.")
 
             # Channel Funnel
             st.markdown("---")
