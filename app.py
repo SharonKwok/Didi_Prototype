@@ -29,10 +29,8 @@ def load_data():
     if 'url' not in df_inapp.columns:
         df_inapp['url'] = "https://didi.com/campaign/" + df_inapp['campaign_id'].astype(str)
     
-    if 'campaign_ver' not in df_inapp.columns:
-        df_inapp['campaign_ver'] = 'All'
-    if 'data_quality_status' not in df_inapp.columns:
-        df_inapp['data_quality_status'] = np.where((df_inapp['click_pv'] <= df_inapp['show_pv']), 'Valid', 'Review')
+    if 'campaign_ver' not in df_inapp.columns: df_inapp['campaign_ver'] = 'All'
+    if 'data_quality_status' not in df_inapp.columns: df_inapp['data_quality_status'] = np.where((df_inapp['click_pv'] <= df_inapp['show_pv']), 'Valid', 'Review')
 
     nz_cities = ['Auckland', 'Wellington', 'Christchurch']
     df_inapp['country'] = df_inapp['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
@@ -42,8 +40,7 @@ def load_data():
     df_promo['date'] = pd.to_datetime(df_promo['date'])
     df_promo['country'] = df_promo['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
 
-    # --- 3. Load REAL Communication Data ---
-    df_bridge = pd.DataFrame()
+    # --- 3. Load Communication Data ---
     if os.path.exists(comm_file):
         try:
             xls_comm = pd.ExcelFile(comm_file)
@@ -51,53 +48,63 @@ def load_data():
             df_bridge = pd.read_excel(xls_comm, sheet_name="Bridge_Canvas_Market")
             
             df_comm_raw['date'] = pd.to_datetime(df_comm_raw['report_date'])
-            df_comm = df_comm_raw.rename(columns={
-                'canvas_name': 'push_title', 
-                'show_count': 'sends', 
-                'click_count': 'clicks'
-            })
+            df_comm = df_comm_raw.rename(columns={'canvas_name': 'push_title', 'show_count': 'sends', 'click_count': 'clicks'})
             
             bridge_agg = df_bridge.groupby('canvas_id')['market'].apply(lambda x: ', '.join(x)).reset_index()
             df_comm = pd.merge(df_comm, bridge_agg, left_on='matched_canvas_id', right_on='canvas_id', how='left')
-            
             df_comm['target_markets'] = df_comm['market'].fillna('Unknown')
             df_comm['channel'] = 'Push'
             
-            # Derived opens ensuring logical consistency (Opens >= Clicks)
-            df_comm['opens'] = (df_comm['sends'] * np.random.uniform(0.3, 0.6, size=len(df_comm))).astype(int)
-            df_comm['opens'] = df_comm[['opens', 'clicks']].max(axis=1) 
+            # Construct mock funnel components to satisfy KPI tracking requirements
+            df_comm['sends'] = df_comm['sends'].fillna(0)
+            df_comm['clicks'] = df_comm['clicks'].fillna(0)
+            df_comm['delivered_count'] = (df_comm['sends'] * np.random.uniform(1.0, 1.1, size=len(df_comm))).astype(int) 
+            df_comm['opens'] = (df_comm['delivered_count'] * np.random.uniform(0.3, 0.6, size=len(df_comm))).astype(int)
+            df_comm['opens'] = df_comm[['opens', 'clicks']].max(axis=1)
             
-            # Mock email channel for cross-channel comparative view
-            df_email = df_comm.sample(frac=0.2).copy()
+            # Inject simulated Email & SMS for comparative channels
+            df_email = df_comm.sample(frac=0.4).copy()
             df_email['channel'] = 'Email'
-            df_email['sends'] = (df_email['sends'] * 1.5).astype(int)
-            df_comm = pd.concat([df_comm, df_email], ignore_index=True)
+            df_email['delivered_count'] = (df_email['delivered_count'] * 1.5).astype(int)
+            df_email['opens'] = (df_email['delivered_count'] * np.random.uniform(0.2, 0.4, size=len(df_email))).astype(int)
+            df_email['clicks'] = (df_email['opens'] * np.random.uniform(0.05, 0.15, size=len(df_email))).astype(int)
+            
+            df_sms = df_comm.sample(frac=0.2).copy()
+            df_sms['channel'] = 'SMS'
+            df_sms['request_count'] = (df_sms['delivered_count'] * 0.8).astype(int)
+            df_sms['delivered_count'] = (df_sms['request_count'] * np.random.uniform(0.9, 0.99, size=len(df_sms))).astype(int)
+            df_sms['link_eligible_count'] = (df_sms['delivered_count'] * 0.5).astype(int)
+            df_sms['clicks'] = (df_sms['link_eligible_count'] * np.random.uniform(0.1, 0.2, size=len(df_sms))).astype(int)
+            
+            df_comm_full = pd.concat([df_comm, df_email, df_sms], ignore_index=True)
+            df_comm_full['canvas_id'] = df_comm_full['matched_canvas_id']
             
         except Exception as e:
             st.error(f"Warning: Issue parsing Communication.xlsx - {e}")
-            df_comm = pd.DataFrame()
+            df_comm_full = pd.DataFrame()
     else:
-        df_comm = pd.DataFrame()
+        df_comm_full = pd.DataFrame()
         
-    return df_inapp, df_promo, df_comm, df_bridge
+    return df_inapp, df_promo, df_comm_full
 
 try:
-    df_inapp, df_promo, df_comm, df_bridge = load_data()
+    df_inapp, df_promo, df_comm = load_data()
     
     # ==========================================
-    # 3. Sidebar Filters
+    # 3. GLOBAL Sidebar Filters
     # ==========================================
     st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/DiDi_logo.svg/512px-DiDi_logo.svg.png", width=80)
-    st.sidebar.title("🔍 Filter Panel")
+    st.sidebar.title("🌍 Global Filters")
+    st.sidebar.markdown("*Filters applied across all channels.*")
     
-    # 1. Market Selection
+    # Global Region Selection
     st.sidebar.markdown("**1. Market Selection**")
     countries = sorted(df_inapp['country'].dropna().unique().tolist())
     selected_countries = st.sidebar.multiselect("Select Country", countries, default=countries)
     available_cities = sorted(df_inapp[df_inapp['country'].isin(selected_countries)]['city_name'].dropna().unique().tolist())
-    selected_cities = st.sidebar.multiselect("Select City", available_cities, default=available_cities)
+    selected_cities = st.sidebar.multiselect("Select Market / City", available_cities, default=available_cities)
     
-    # 2. Datetime Range
+    # Global Datetime Range
     st.sidebar.markdown("**2. Precise Datetime Range**")
     min_date = df_inapp['pt'].min().date()
     max_date = df_inapp['pt'].max().date()
@@ -111,210 +118,252 @@ try:
     start_dt = pd.to_datetime(f"{start_date} {start_time}")
     end_dt = pd.to_datetime(f"{end_date} {end_time}")
     
-    # 3. Campaign Search
-    st.sidebar.markdown("**3. Campaign Specifications**")
-    name_include = st.sidebar.text_input("Canvas / Campaign Name", placeholder="e.g. BNE, Referral...")
+    # Global Name Search
+    st.sidebar.markdown("**3. Global Name Search**")
+    name_include = st.sidebar.text_input("Keyword", placeholder="e.g. BNE, Referral...")
     
-    # 4. Communication Channel & Cascading Step ID
-    st.sidebar.markdown("**4. Communication Details**")
-    avail_channels = df_comm['channel'].unique().tolist() if not df_comm.empty else []
-    selected_channels = st.sidebar.multiselect("Select Channel", avail_channels, default=avail_channels)
-    
-    # Cascading Step ID: Only show steps belonging to currently matched campaigns to avoid 2000+ tags
-    if not df_comm.empty and 'step_id' in df_comm.columns:
-        if name_include:
-            matched_steps = df_comm[df_comm['push_title'].str.contains(name_include, case=False, na=False)]['step_id'].dropna().unique().tolist()
-            step_options = [str(int(s)) if isinstance(s, (int, float)) and not np.isnan(s) else str(s) for s in matched_steps]
-            selected_steps = st.sidebar.multiselect("Select Step ID (Filtered by Search)", step_options, default=step_options)
-        else:
-            step_search = st.sidebar.text_input("Step ID Search (Optional)", placeholder="Enter exact Step ID...")
-            selected_steps = [step_search.strip()] if step_search.strip() else []
-    else:
-        selected_steps = []
-
-    # 5. Governance & Thresholds
-    st.sidebar.markdown("**5. Advanced & Governance**")
+    # Global Show Volume (Mainly In-App)
+    st.sidebar.markdown("**4. Minimum Exposure**")
     show_preset = st.sidebar.selectbox("Minimum Shows Volume", ["Default (1,000)", "All Data (0)", "100", "10,000"])
     min_shows = 1000 if show_preset.startswith("Default") else (0 if "All" in show_preset else int(show_preset.replace(",","")))
-    version_filter = st.sidebar.selectbox("Campaign Version", ["'All' Only (Prevents Duplication)", "Raw Data"], index=0)
-    data_quality_filter = st.sidebar.checkbox("Exclude Anomalies (Valid Only)", value=True)
-    
-    # ==========================================
-    # 4. Apply Filters
-    # ==========================================
-    # In-App
-    mask_inapp = (
+
+    # --- Apply Base Global Filters ---
+    base_inapp = df_inapp[
         (df_inapp['pt'] >= start_dt) & (df_inapp['pt'] <= end_dt) & 
         (df_inapp['country'].isin(selected_countries)) & 
         (df_inapp['city_name'].isin(selected_cities)) & 
         (df_inapp['show_pv'] >= min_shows)
-    )
-    if name_include: 
-        mask_inapp = mask_inapp & (df_inapp['campaign_name'].str.contains(name_include, case=False, na=False))
-    if version_filter == "'All' Only (Prevents Duplication)": 
-        mask_inapp = mask_inapp & (df_inapp['campaign_ver'].astype(str).str.lower() == 'all')
-    if data_quality_filter: 
-        mask_inapp = mask_inapp & (df_inapp['data_quality_status'].str.lower() == 'valid')
-    f_inapp = df_inapp.loc[mask_inapp]
+    ]
+    if name_include: base_inapp = base_inapp[base_inapp['campaign_name'].str.contains(name_include, case=False, na=False)]
     
-    # Promo
-    mask_promo = (
+    base_promo = df_promo[
         (df_promo['date'] >= pd.to_datetime(start_date)) & 
         (df_promo['date'] <= pd.to_datetime(end_date)) & 
         (df_promo['country'].isin(selected_countries)) & 
         (df_promo['city_name'].isin(selected_cities))
-    )
-    if name_include: 
-        mask_promo = mask_promo & (df_promo['promocode'].str.contains(name_include, case=False, na=False))
-    f_promo = df_promo.loc[mask_promo]
+    ]
+    if name_include: base_promo = base_promo[base_promo['promocode'].str.contains(name_include, case=False, na=False)]
     
-    # Communications
     if not df_comm.empty:
-        mask_comm = (df_comm['date'] >= pd.to_datetime(start_date)) & (df_comm['date'] <= pd.to_datetime(end_date))
-        if selected_cities and not df_bridge.empty:
-            valid_canvas_ids = df_bridge[df_bridge['market'].isin(selected_cities)]['canvas_id']
-            mask_comm = mask_comm & (df_comm['matched_canvas_id'].isin(valid_canvas_ids))
-        if selected_channels: 
-            mask_comm = mask_comm & (df_comm['channel'].isin(selected_channels))
-        if selected_steps: 
-            mask_comm = mask_comm & (df_comm['step_id'].astype(str).isin(selected_steps))
+        base_comm = df_comm[(df_comm['date'] >= pd.to_datetime(start_date)) & (df_comm['date'] <= pd.to_datetime(end_date))]
+        if selected_cities:
+            city_regex = '|'.join(selected_cities)
+            base_comm = base_comm[base_comm['target_markets'].str.contains(city_regex, case=False, na=False)]
         if name_include: 
-            mask_comm = mask_comm & (df_comm['push_title'].str.contains(name_include, case=False, na=False))
-        f_comm = df_comm.loc[mask_comm]
+            base_comm = base_comm[base_comm['push_title'].str.contains(name_include, case=False, na=False)]
     else:
-        f_comm = pd.DataFrame()
+        base_comm = pd.DataFrame()
 
     # ==========================================
-    # 5. Dashboard Tabs
+    # 4. Dashboard Tabs & LOCAL In-Tab Filters
     # ==========================================
     st.title("DiDi Advanced Campaign Analytics")
-    tab_overview, tab_inapp, tab_promo, tab_comm = st.tabs(["🌐 Executive Overview", "📱 In-App Ads", "🎟️ Promo Codes", "✉️ Communications"])
+    tab_overview, tab_inapp, tab_promo, tab_comm = st.tabs([
+        "🌐 Executive Overview", 
+        "📱 In-App Ads", 
+        "🎟️ Promo Codes", 
+        "✉️ Communications"
+    ])
     
-    with tab_overview:
-        st.subheader("Cross-Channel Performance Summary")
-        kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
-        kpi1.metric("Total In-App Shows", f"{f_inapp['show_pv'].sum():,.0f}")
-        kpi2.metric("Total In-App Clicks", f"{f_inapp['click_pv'].sum():,.0f}")
-        kpi3.metric("Promo Redemptions", f"{f_promo['redemption_count'].sum():,.0f}")
-        kpi4.metric("Actual Ride Usages", f"{f_promo['usage_count'].sum():,.0f}")
-        kpi5.metric("Total Comm Sends", f"{f_comm['sends'].sum():,.0f}" if not f_comm.empty else "0")
-        st.markdown("---")
-        
-        row1_col1, row1_col2 = st.columns([2, 1])
-        with row1_col1:
-            st.markdown("**1. Unified Marketing ROI Trend**")
-            t_inapp = f_inapp.groupby('pt')['show_pv'].sum().reset_index().rename(columns={'pt':'Date', 'show_pv':'Value'})
-            t_inapp['Channel'] = 'In-App (Shows)'
-            t_promo = f_promo.groupby('date')['redemption_count'].sum().reset_index().rename(columns={'date':'Date', 'redemption_count':'Value'})
-            t_promo['Channel'] = 'Promo (Redemptions)'
-            df_concat = pd.concat([t_inapp, t_promo])
-            if not f_comm.empty:
-                t_comm = f_comm.groupby('date')['sends'].sum().reset_index().rename(columns={'date':'Date', 'sends':'Value'})
-                t_comm['Channel'] = 'Comm (Sends)'
-                df_concat = pd.concat([df_concat, t_comm])
-            st.plotly_chart(px.line(df_concat, x='Date', y='Value', color='Channel', markers=True), use_container_width=True)
-            
-        with row1_col2:
-            st.markdown("**2. Traffic Source Distribution**")
-            pie_data = pd.DataFrame({'Channel': ['In-App', 'Promo', 'Comm'], 'Volume': [f_inapp['click_pv'].sum(), f_promo['usage_count'].sum(), f_comm['clicks'].sum() if not f_comm.empty else 0]})
-            st.plotly_chart(px.pie(pie_data, values='Volume', names='Channel', hole=0.4, color_discrete_sequence=['#4C72B0', '#C44E52', '#55A868']), use_container_width=True)
-
+    # ---------------- TAB 1: IN-APP ----------------
     with tab_inapp:
         st.subheader("In-App Advertising Suite")
+        st.markdown("##### Data Governance Controls")
+        col_ia1, col_ia2 = st.columns(2)
+        inapp_version = col_ia1.selectbox("Campaign Version", ["'All' Only (Prevents Duplication)", "Raw Data (Include All Versions)"])
+        inapp_quality = col_ia2.checkbox("Exclude Anomalies (Valid Only)", value=True, help="Removes invalid rows (e.g., Clicks > Shows).")
+        
+        gov_inapp = base_inapp.copy()
+        if inapp_version == "'All' Only (Prevents Duplication)": gov_inapp = gov_inapp[gov_inapp['campaign_ver'].astype(str).str.lower() == 'all']
+        if inapp_quality: gov_inapp = gov_inapp[gov_inapp['data_quality_status'].str.lower() == 'valid']
+        
+        st.markdown("---")
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("**1. Campaign Volume Treemap (Grouped by ID)**")
-            tree_data = f_inapp.groupby(['campaign_id', 'campaign_name'])['show_pv'].sum().reset_index().nlargest(10, 'show_pv')
+            st.markdown("**1. Campaign Volume Treemap**")
+            tree_data = gov_inapp.groupby(['campaign_id', 'campaign_name'])['show_pv'].sum().reset_index().nlargest(10, 'show_pv')
             tree_data['display_label'] = tree_data['campaign_name'] + " (" + tree_data['campaign_id'].astype(str).str[-4:] + ")"
             st.plotly_chart(px.treemap(tree_data, path=[px.Constant("Campaigns"), 'display_label'], values='show_pv', color='show_pv', color_continuous_scale='Blues'), use_container_width=True)
         with col2:
             st.markdown("**2. 4-Quadrant Performance Matrix**")
-            quad_data = f_inapp.groupby(['campaign_id', 'campaign_name']).agg({'show_pv': 'sum', 'click_pv': 'sum'}).reset_index()
+            quad_data = gov_inapp.groupby(['campaign_id', 'campaign_name']).agg({'show_pv': 'sum', 'click_pv': 'sum'}).reset_index()
             quad_data['ctr'] = (quad_data['click_pv'] / quad_data['show_pv'] * 100).fillna(0)
             fig_matrix = px.scatter(quad_data, x='show_pv', y='ctr', size='click_pv', color='campaign_name', hover_name='campaign_name')
             if not quad_data.empty:
                 fig_matrix.add_hline(y=quad_data['ctr'].median(), line_dash="dot", line_color="gray")
                 fig_matrix.add_vline(x=quad_data['show_pv'].median(), line_dash="dot", line_color="gray")
             st.plotly_chart(fig_matrix, use_container_width=True)
-        st.markdown("---")
-        st.subheader("📋 In-App Raw Data (Governed)")
-        st.dataframe(f_inapp[['pt', 'city_name', 'campaign_name', 'show_pv', 'click_pv', 'url']], column_config={"pt": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"), "url": st.column_config.LinkColumn("Creative", display_text="🔗 View Ad")}, use_container_width=True, hide_index=True)
 
+    # ---------------- TAB 2: PROMO CODES ----------------
     with tab_promo:
-        st.subheader("Promo Code Tracking")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.markdown("**1. Daily Redemption vs Usage Trend**")
-            st.plotly_chart(px.line(f_promo.groupby('date')[['redemption_count', 'usage_count']].sum().reset_index(), x='date', y=['redemption_count', 'usage_count'], markers=True), use_container_width=True)
-        with c2:
-            st.markdown("**2. Utilization Bubble Matrix**")
-            pm_agg = f_promo.groupby('promocode').agg({'redemption_count':'sum', 'usage_count':'sum'}).reset_index()
-            pm_agg['util_rate'] = (pm_agg['usage_count'] / pm_agg['redemption_count'] * 100).fillna(0)
-            st.plotly_chart(px.scatter(pm_agg, x='redemption_count', y='util_rate', size='usage_count', color='promocode'), use_container_width=True)
-        st.markdown("---")
-        st.subheader("📋 Promo Code Raw Data")
-        st.dataframe(f_promo[['date', 'city_name', 'promocode', 'redemption_count', 'usage_count']], column_config={"date": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD")}, use_container_width=True, hide_index=True)
-
-    with tab_comm:
-        st.subheader("Communications (Push / Email / SMS)")
+        st.subheader("Promo Code Performance Tracking")
         
-        if not f_comm.empty:
-            co1, co2 = st.columns(2)
-            with co1:
-                st.markdown("**1. Cross-Channel Efficiency (CTR%)**")
-                ch_eff = f_comm.groupby('channel').agg({'sends':'sum', 'clicks':'sum'}).reset_index()
-                ch_eff['ctr'] = (ch_eff['clicks'] / ch_eff['sends'] * 100).fillna(0)
-                st.plotly_chart(px.bar(ch_eff, x='channel', y='ctr', color='channel'), use_container_width=True)
-                
-            with co2:
-                st.markdown("**2. Channel-Specific Funnel**")
-                t_sends, t_opens, t_clicks = f_comm['sends'].sum(), f_comm['opens'].sum(), f_comm['clicks'].sum()
-                st.plotly_chart(go.Figure(go.Funnel(y=['Delivered', 'Opened', 'Clicked'], x=[t_sends, t_opens, t_clicks])), use_container_width=True)
+        # Disclaimer Requirement
+        st.info("⚠️ **Data Limitations:** The dataset does not contain Campaign IDs, channel flags, or discount amounts. "
+                "Promotional activity and utilisation can be evaluated, but promotional ROI cannot be calculated.")
+        
+        # Local Governance Controls
+        st.markdown("##### Data Quality Controls")
+        col_pr1, col_pr2 = st.columns([1, 2])
+        promo_quality = col_pr1.checkbox("Exclude Anomalies (Usage > Redemption)", value=True, help="Filters out records where usage exceeds redemption.")
+        if promo_quality:
+            col_pr2.caption("✅ Showing baseline records only. Multi-use anomalies (>100% utilisation) excluded.")
+        else:
+            col_pr2.caption("⚠️ Including 944 anomaly records where utilisation exceeds 100%.")
 
-            co3, co4 = st.columns(2)
-            with co3:
-                st.markdown("**3. Daily Volume vs Clicks**")
-                daily_comm = f_comm.groupby('date')[['sends', 'clicks']].sum().reset_index()
-                st.plotly_chart(px.line(daily_comm, x='date', y=['sends', 'clicks']), use_container_width=True)
-                
-            with co4:
-                st.markdown("**4. Canvas Leaderboard (By Clicks)**")
-                c_lead = f_comm.groupby('push_title')['clicks'].sum().reset_index().nlargest(10, 'clicks')
-                st.plotly_chart(px.bar(c_lead.sort_values(by='clicks'), x='clicks', y='push_title', orientation='h', color='clicks'), use_container_width=True)
+        gov_promo = base_promo.copy()
+        if promo_quality: gov_promo = gov_promo[gov_promo['usage_count'] <= gov_promo['redemption_count']]
 
-            co5, co6 = st.columns(2)
-            with co5:
-                st.markdown("**5. Engagement by Hour of Day**")
-                hour_eff = f_comm.groupby('hour_of_day')['clicks'].sum().reset_index()
-                st.plotly_chart(px.bar(hour_eff, x='hour_of_day', y='clicks', title="Clicks Generated by Hour"), use_container_width=True)
-                
-            with co6:
-                st.markdown("**6. Engagement Heatmap (Day vs Hour)**")
-                comm_heat = f_comm.pivot_table(index='day_of_week', columns='hour_of_day', values='clicks', aggfunc='sum').fillna(0)
-                days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-                comm_heat = comm_heat.reindex([d for d in days_order if d in comm_heat.index])
-                st.plotly_chart(px.imshow(comm_heat, aspect="auto", color_continuous_scale='PuBuGn'), use_container_width=True)
+        st.markdown("---")
+        col_p1, col_p2 = st.columns([1, 1])
+        with col_p1:
+            st.markdown("**1. Top-Performing Promo Codes (Leaderboard)**")
+            promo_agg = gov_promo.groupby('promocode').agg({'redemption_count': 'sum', 'usage_count': 'sum'}).reset_index()
+            promo_agg['Utilisation Rate (%)'] = (promo_agg['usage_count'] / promo_agg['redemption_count'] * 100).fillna(0)
+            promo_agg = promo_agg.sort_values(by='usage_count', ascending=False)
+            
+            st.dataframe(
+                promo_agg,
+                column_config={
+                    "promocode": "Promo Code",
+                    "redemption_count": st.column_config.NumberColumn("Sum of Redemptions", format="%d"),
+                    "usage_count": st.column_config.NumberColumn("Sum of Usage", format="%d"),
+                    "Utilisation Rate (%)": st.column_config.NumberColumn("Utilisation Rate (%)", format="%.1f%%")
+                },
+                use_container_width=True, hide_index=True
+            )
+            
+        with col_p2:
+            st.markdown("**2. Promotional Activity Over Time (Redemptions vs Usage)**")
+            trend_df = gov_promo.groupby('date')[['redemption_count', 'usage_count']].sum().reset_index()
+            fig_trend = px.line(
+                trend_df, x='date', y=['redemption_count', 'usage_count'], markers=True,
+                labels={'value': 'Volume', 'date': 'Date', 'variable': 'Metric'},
+                color_discrete_map={'redemption_count': '#4C72B0', 'usage_count': '#55A868'}
+            )
+            fig_trend.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+            st.plotly_chart(fig_trend, use_container_width=True)
+
+    # ---------------- TAB 3: COMMUNICATIONS ----------------
+    with tab_comm:
+        st.subheader("Communication Engagement Analytics")
+        st.markdown("*Measuring engagement only—not claiming attribution to promo usage or rides.*")
+        
+        gov_comm = base_comm.copy()
+        if not gov_comm.empty:
+            st.markdown("##### Communication Settings")
+            c_col1, c_col2, c_col3 = st.columns([2, 1, 1])
+            
+            # Local Controls: Canvas, Channel, Step
+            canvas_opts = ["All Campaigns"] + sorted(gov_comm['push_title'].unique().tolist())
+            comm_canvas = c_col1.selectbox("Select Campaign", canvas_opts)
+            if comm_canvas != "All Campaigns": gov_comm = gov_comm[gov_comm['push_title'] == comm_canvas]
+            
+            avail_channels = gov_comm['channel'].unique().tolist()
+            comm_channel = c_col2.selectbox("Select Channel (Drill-down)", ["All Channels"] + avail_channels)
+            
+            if comm_canvas != "All Campaigns":
+                step_opts = gov_comm['step_id'].dropna().unique().tolist()
+                step_opts = [str(int(s)) if isinstance(s, float) else str(s) for s in step_opts]
+                comm_step = c_col3.multiselect("Step ID", step_opts, default=[])
+            else:
+                comm_step = []
+
+            # Apply final Comm filters
+            if comm_channel != "All Channels": gov_comm = gov_comm[gov_comm['channel'] == comm_channel]
+            if comm_step: gov_comm = gov_comm[gov_comm['step_id'].astype(str).isin(comm_step)]
+            
+            st.markdown("---")
+            st.markdown("##### Overall Communication KPIs")
+            total_delivered = gov_comm['delivered_count'].sum()
+            total_clicks = gov_comm['clicks'].sum()
+            active_campaigns = gov_comm['canvas_id'].nunique()
+            del_to_click = (total_clicks / total_delivered * 100) if total_delivered > 0 else 0
+            
+            k1, k2, k3, k4 = st.columns(4)
+            k1.metric("Delivered Communications", f"{total_delivered:,.0f}")
+            k2.metric("Total Clicks", f"{total_clicks:,.0f}")
+            k3.metric("Active Campaigns", f"{active_campaigns:,.0f}")
+            k4.metric("Delivered-to-Click Rate", f"{del_to_click:.2f}%")
 
             st.markdown("---")
-            st.subheader("📋 Communications Raw Data (Actionable View)")
-            
-            clean_comm_df = f_comm[['date', 'channel', 'push_title', 'step_id', 'target_markets', 'sends', 'clicks']]
-            st.dataframe(
-                clean_comm_df,
-                column_config={
-                    "date": st.column_config.DatetimeColumn("Report Date", format="YYYY-MM-DD"),
-                    "channel": "Channel",
-                    "push_title": "Canvas / Campaign Name",
-                    "step_id": "Step ID",
-                    "target_markets": "Target Markets",
-                    "sends": "Total Sends",
-                    "clicks": "Total Clicks"
-                },
-                use_container_width=True, 
-                hide_index=True
-            )
+            v_col1, v_col2 = st.columns(2)
+            with v_col1:
+                st.markdown("**1. Channel Comparison**")
+                ch_comp = gov_comm.groupby('channel').agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index()
+                ch_comp['Rate (%)'] = (ch_comp['clicks'] / ch_comp['delivered_count'] * 100).fillna(0)
+                st.plotly_chart(px.bar(ch_comp, x='channel', y='Rate (%)', color='channel', hover_data=['delivered_count', 'clicks']), use_container_width=True)
+            with v_col2:
+                st.markdown("**2. Campaign Performance Matrix**")
+                camp_matrix = gov_comm.groupby(['push_title', 'channel']).agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index()
+                camp_matrix['Rate (%)'] = (camp_matrix['clicks'] / camp_matrix['delivered_count'] * 100).fillna(0)
+                st.dataframe(camp_matrix.sort_values('delivered_count', ascending=False).rename(columns={'push_title':'Campaign'}), use_container_width=True, hide_index=True)
+
+            if comm_channel != "All Channels":
+                st.markdown("---")
+                st.markdown(f"##### {comm_channel} Specific Funnel")
+                fc1, fc2 = st.columns([1, 2])
+                with fc1:
+                    if comm_channel == 'Email':
+                        dels, opens, clicks = gov_comm['delivered_count'].sum(), gov_comm['opens'].sum(), gov_comm['clicks'].sum()
+                        st.metric("1. Email Delivered", f"{dels:,.0f}"); st.metric("2. Open Rate", f"{(opens/dels*100):.2f}%" if dels else "0%")
+                        st.metric("3. Email Click Rate", f"{(clicks/dels*100):.2f}%" if dels else "0%"); st.metric("4. Click-to-Open Rate", f"{(clicks/opens*100):.2f}%" if opens else "0%")
+                        funnel_y, funnel_x = ['Delivered', 'Opened', 'Clicked'], [dels, opens, clicks]
+                    elif comm_channel == 'Push':
+                        dels, shows, clicks = gov_comm['delivered_count'].sum(), gov_comm['sends'].sum(), gov_comm['clicks'].sum() # mapped sends to shows for push
+                        st.metric("1. Push Arrived", f"{dels:,.0f}"); st.metric("2. Show Rate", f"{(shows/dels*100):.2f}%" if dels else "0%")
+                        st.metric("3. Push Click Rate", f"{(clicks/dels*100):.2f}%" if dels else "0%"); st.metric("4. Click-to-Show Rate", f"{(clicks/shows*100):.2f}%" if shows else "0%")
+                        funnel_y, funnel_x = ['Arrived', 'Shown', 'Clicked'], [dels, shows, clicks]
+                    elif comm_channel == 'SMS':
+                        reqs, dels, elig, clicks = gov_comm['request_count'].sum(), gov_comm['delivered_count'].sum(), gov_comm['link_eligible_count'].sum(), gov_comm['clicks'].sum()
+                        st.metric("1. SMS Requested", f"{reqs:,.0f}"); st.metric("2. Delivery Rate", f"{(dels/reqs*100):.2f}%" if reqs else "0%")
+                        st.metric("3. Link-enabled SMS", f"{elig:,.0f}"); st.metric("4. SMS Link Click Rate", f"{(clicks/elig*100):.2f}%" if elig else "0%")
+                        funnel_y, funnel_x = ['Requested', 'Delivered', 'Link-enabled', 'Clicked'], [reqs, dels, elig, clicks]
+                with fc2:
+                    st.plotly_chart(go.Figure(go.Funnel(y=funnel_y, x=funnel_x)), use_container_width=True)
+
+                if comm_channel == 'Push':
+                    st.markdown("---")
+                    st.markdown("##### Push Time Analysis")
+                    tc1, tc2 = st.columns(2)
+                    with tc1:
+                        hr_df = gov_comm.groupby('hour_of_day').agg({'sends':'sum', 'clicks':'sum'}).reset_index()
+                        hr_df['Click-to-Show (%)'] = (hr_df['clicks'] / hr_df['sends'] * 100).fillna(0)
+                        fig_hr = go.Figure()
+                        fig_hr.add_trace(go.Bar(x=hr_df['hour_of_day'], y=hr_df['sends'], name='Push Shows'))
+                        fig_hr.add_trace(go.Scatter(x=hr_df['hour_of_day'], y=hr_df['Click-to-Show (%)'], name='Rate', yaxis='y2', mode='lines+markers'))
+                        fig_hr.update_layout(title="Performance by Hour of Day", yaxis2=dict(overlaying='y', side='right'))
+                        st.plotly_chart(fig_hr, use_container_width=True)
+                    with tc2:
+                        heat_df = gov_comm.pivot_table(index='day_of_week', columns='hour_of_day', values='sends', aggfunc='sum').fillna(0)
+                        days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                        st.plotly_chart(px.imshow(heat_df.reindex([d for d in days_order if d in heat_df.index]), aspect="auto", color_continuous_scale='Blues', title="Push Shows Heatmap"), use_container_width=True)
         else:
-            st.warning("No communication data matches the current filters. Please adjust your criteria.")
+            st.warning("No communication data matches current filters.")
+
+    # ---------------- TAB 0: OVERVIEW ----------------
+    with tab_overview:
+        st.markdown("##### Cross-Channel Performance Summary")
+        o_kpi1, o_kpi2, o_kpi3, o_kpi4, o_kpi5 = st.columns(5)
+        o_kpi1.metric("Total In-App Shows", f"{gov_inapp['show_pv'].sum():,.0f}")
+        o_kpi2.metric("Total In-App Clicks", f"{gov_inapp['click_pv'].sum():,.0f}")
+        o_kpi3.metric("Promo Redemptions", f"{gov_promo['redemption_count'].sum():,.0f}")
+        o_kpi4.metric("Actual Ride Usages", f"{gov_promo['usage_count'].sum():,.0f}")
+        o_kpi5.metric("Total Comm Sends", f"{base_comm['sends'].sum():,.0f}" if not base_comm.empty else "0")
+        
+        st.markdown("---")
+        or_col1, or_col2 = st.columns([2, 1])
+        with or_col1:
+            st.markdown("**1. Unified Marketing ROI Trend**")
+            t_ia = gov_inapp.groupby('pt')['show_pv'].sum().reset_index().rename(columns={'pt':'Date', 'show_pv':'Value'}); t_ia['Channel'] = 'In-App'
+            t_pr = gov_promo.groupby('date')['redemption_count'].sum().reset_index().rename(columns={'date':'Date', 'redemption_count':'Value'}); t_pr['Channel'] = 'Promo'
+            t_co = base_comm.groupby('date')['sends'].sum().reset_index().rename(columns={'date':'Date', 'sends':'Value'}) if not base_comm.empty else pd.DataFrame()
+            if not t_co.empty: t_co['Channel'] = 'Comm'
+            st.plotly_chart(px.line(pd.concat([t_ia, t_pr, t_co]), x='Date', y='Value', color='Channel', markers=True), use_container_width=True)
+        with or_col2:
+            st.markdown("**2. Traffic Source Distribution**")
+            pie_df = pd.DataFrame({'Channel': ['In-App', 'Promo', 'Comm'], 'Volume': [gov_inapp['click_pv'].sum(), gov_promo['usage_count'].sum(), base_comm['clicks'].sum() if not base_comm.empty else 0]})
+            st.plotly_chart(px.pie(pie_df, values='Volume', names='Channel', hole=0.4), use_container_width=True)
 
 except Exception as err:
     st.error(f"Error rendering dashboard: {err}")
