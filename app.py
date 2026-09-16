@@ -1,71 +1,66 @@
-import dash
-from dash import dcc, html
+import streamlit as st
 import plotly.express as px
 
-# --- Assume df_comm_new, df_promo, and all aggregated dataframes (daily_comm_perf, etc.)
-# --- and figure objects (fig_daily_comm, fig_daily_ctr, etc.) are available from previous steps.
+# --- 假設你的資料處理與圖表 (fig_daily_comm, fig_daily_ctr 等) 已經在程式碼上半部定義好了 ---
+# 例如: fig_daily_comm = px.line(...)
 
-# Initialize the Dash app
-app = dash.Dash(__name__)
+# 1. 初始化 Streamlit 頁面設定 (必須放在所有 st 指令的最前面)
+st.set_page_config(page_title="Didi Marketing Performance Dashboard", layout="wide")
 
-# Define the app layout
-app.layout = html.Div(children=[
-    html.H1(children='Didi Marketing Performance Dashboard', style={'textAlign': 'center'}),
+# ==========================================
+# 標題區塊
+# ==========================================
+st.title('🚗 Didi Marketing Performance Dashboard')
 
-    html.H2(children='Communication Performance', style={'textAlign': 'center'}),
-    html.Div(children='Key metrics for in-app and communication campaigns.', style={'textAlign': 'center', 'marginBottom': '20px'}),
+# ==========================================
+# 區塊 1: Communication Performance
+# ==========================================
+st.header('Communication Performance')
+st.markdown('*Key metrics for in-app and communication campaigns.*')
 
-    html.Div([
-        html.Div([
-            html.H3('Daily Shows and Clicks'),
-            dcc.Graph(id='daily-comm-graph', figure=fig_daily_comm)
-        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'}),
-        html.Div([
-            html.H3('Daily Click-Through Rate (CTR)'),
-            dcc.Graph(id='daily-ctr-graph', figure=fig_daily_ctr)
-        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'})
-    ], style={'display': 'flex', 'flex-wrap': 'wrap'}),
+# 使用 st.columns 建立左右並排的雙欄排版
+col1, col2 = st.columns(2)
 
-    html.Div([
-        html.Div([
-            html.H3('Top 10 Campaigns by Clicks'),
-            dcc.Graph(id='top-campaigns-graph', figure=fig_top_campaigns)
-        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'}),
-        html.Div([
-            html.H3('Clicks by Day of Week and Hour'),
-            dcc.Graph(id='heatmap-clicks-graph', figure=fig_heatmap)
-        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'})
-    ], style={'display': 'flex', 'flex-wrap': 'wrap'}),
+with col1:
+    st.subheader('Daily Shows and Clicks')
+    # st.plotly_chart 專門用來在 Streamlit 顯示 Plotly 的圖表
+    # 請確保 fig_daily_comm 已經存在
+    st.plotly_chart(fig_daily_comm, use_container_width=True)
 
-    html.H2(children='Promocode Performance', style={'textAlign': 'center', 'marginTop': '40px'}),
-    html.Div(children='Analysis of promocode redemptions and usages across cities.', style={'textAlign': 'center', 'marginBottom': '20px'}),
+with col2:
+    st.subheader('Daily Click-Through Rate (CTR)')
+    st.plotly_chart(fig_daily_ctr, use_container_width=True)
 
-    html.Div([
-        html.Div([
-            html.H3('Daily Promocode Redemptions and Usages'),
-            dcc.Graph(id='daily-promo-graph', figure=fig_daily_promo)
-        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'}),
-        html.Div([
-            html.H3('Top 10 Promocodes by Usage'),
-            dcc.Graph(id='top-promocodes-graph', figure=fig_top_promocodes)
-        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'})
-    ], style={'display': 'flex', 'flex-wrap': 'wrap'}),
+# 建立第二排的雙欄
+col3, col4 = st.columns(2)
 
-    html.Div([
-        html.Div([
-            html.H3('Promocode Redemptions and Usages by City'),
-            dcc.Graph(id='city-promo-graph', figure=fig_city_promo)
-        ], style={'width': '100%', 'padding': '0 20'})
-    ], style={'display': 'flex', 'flex-wrap': 'wrap'})
+with col3:
+    st.subheader('Top 10 Campaigns by Clicks')
+    st.plotly_chart(fig_top_campaigns, use_container_width=True)
 
-])
+with col4:
+    st.subheader('Clicks by Day of Week and Hour')
+    st.plotly_chart(fig_heatmap, use_container_width=True)
 
-# Run the app
-if __name__ == '__main__':
-    # In a local environment, you would typically run app.run_server(debug=True)
-    # For Colab, you might use jupyter_dash or ngrok for public access, but direct running
-    # of app.run_server() here won't create a persistent web server visible to your browser.
-    print("To run this Dash app, save it as a .py file and execute 'python app.py' in your terminal.")
-    print("Install Dash with: pip install dash pandas plotly")
-    # The line below is commented out because it will cause a ModuleNotFoundError in Colab if Dash is not installed via !pip install dash
-    # app.run_server(debug=True)
+st.markdown("---") # 畫一條分隔線
+
+# ==========================================
+# 區塊 2: Promocode Performance
+# ==========================================
+st.header('Promocode Performance')
+st.markdown('*Analysis of promocode redemptions and usages across cities.*')
+
+# 建立第三排的雙欄
+col5, col6 = st.columns(2)
+
+with col5:
+    st.subheader('Daily Promocode Redemptions and Usages')
+    st.plotly_chart(fig_daily_promo, use_container_width=True)
+
+with col6:
+    st.subheader('Top 10 Promocodes by Usage')
+    st.plotly_chart(fig_top_promocodes, use_container_width=True)
+
+# 最後一個圖表占滿全寬
+st.subheader('Promocode Redemptions and Usages by City')
+st.plotly_chart(fig_city_promo, use_container_width=True)
