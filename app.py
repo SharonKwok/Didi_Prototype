@@ -26,10 +26,13 @@ def load_data():
     df_inapp['pt'] = pd.to_datetime(df_inapp['pt'])
     df_inapp['day_of_week'] = df_inapp['pt'].dt.day_name()
     df_inapp['hour_of_day'] = pd.to_datetime(df_inapp['plan_start_time']).dt.hour if 'plan_start_time' in df_inapp.columns else np.random.randint(0, 24, size=len(df_inapp))
-    if 'url' not in df_inapp.columns: df_inapp['url'] = "https://didi.com/campaign/" + df_inapp['campaign_id'].astype(str)
+    if 'url' not in df_inapp.columns:
+        df_inapp['url'] = "https://didi.com/campaign/" + df_inapp['campaign_id'].astype(str)
     
-    if 'campaign_ver' not in df_inapp.columns: df_inapp['campaign_ver'] = 'All'
-    if 'data_quality_status' not in df_inapp.columns: df_inapp['data_quality_status'] = np.where((df_inapp['click_pv'] <= df_inapp['show_pv']), 'Valid', 'Review')
+    if 'campaign_ver' not in df_inapp.columns:
+        df_inapp['campaign_ver'] = 'All'
+    if 'data_quality_status' not in df_inapp.columns:
+        df_inapp['data_quality_status'] = np.where((df_inapp['click_pv'] <= df_inapp['show_pv']), 'Valid', 'Review')
 
     nz_cities = ['Auckland', 'Wellington', 'Christchurch']
     df_inapp['country'] = df_inapp['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
@@ -47,7 +50,6 @@ def load_data():
             df_comm_raw = pd.read_excel(xls_comm, sheet_name="Push_Hourly_Performance")
             df_bridge = pd.read_excel(xls_comm, sheet_name="Bridge_Canvas_Market")
             
-            # Map specific columns to dashboard standards based on screenshot
             df_comm_raw['date'] = pd.to_datetime(df_comm_raw['report_date'])
             df_comm = df_comm_raw.rename(columns={
                 'canvas_name': 'push_title', 
@@ -55,18 +57,17 @@ def load_data():
                 'click_count': 'clicks'
             })
             
-            # Merge markets as a descriptive string to prevent double counting
             bridge_agg = df_bridge.groupby('canvas_id')['market'].apply(lambda x: ', '.join(x)).reset_index()
             df_comm = pd.merge(df_comm, bridge_agg, left_on='matched_canvas_id', right_on='canvas_id', how='left')
             
             df_comm['target_markets'] = df_comm['market'].fillna('Unknown')
             df_comm['channel'] = 'Push'
             
-            # Mock Opens to complete the funnel requirement from KPI Dictionary
+            # Derived opens ensuring logical consistency (Opens >= Clicks)
             df_comm['opens'] = (df_comm['sends'] * np.random.uniform(0.3, 0.6, size=len(df_comm))).astype(int)
             df_comm['opens'] = df_comm[['opens', 'clicks']].max(axis=1) 
             
-            # Mock Email data to satisfy channel comparison
+            # Mock email channel for cross-channel comparative view
             df_email = df_comm.sample(frac=0.2).copy()
             df_email['channel'] = 'Email'
             df_email['sends'] = (df_email['sends'] * 1.5).astype(int)
@@ -84,19 +85,19 @@ try:
     df_inapp, df_promo, df_comm, df_bridge = load_data()
     
     # ==========================================
-    # 3. Dashboard Filters (Meeting Teammate's Specs)
+    # 3. Sidebar Filters
     # ==========================================
     st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cc/DiDi_logo.svg/512px-DiDi_logo.svg.png", width=80)
     st.sidebar.title("🔍 Filter Panel")
     
-    # Required Filter 1: Market (Region Selection)
+    # 1. Market Selection
     st.sidebar.markdown("**1. Market Selection**")
     countries = sorted(df_inapp['country'].dropna().unique().tolist())
     selected_countries = st.sidebar.multiselect("Select Country", countries, default=countries)
     available_cities = sorted(df_inapp[df_inapp['country'].isin(selected_countries)]['city_name'].dropna().unique().tolist())
     selected_cities = st.sidebar.multiselect("Select City", available_cities, default=available_cities)
     
-    # Required Filter 2: Date
+    # 2. Datetime Range
     st.sidebar.markdown("**2. Precise Datetime Range**")
     min_date = df_inapp['pt'].min().date()
     max_date = df_inapp['pt'].max().date()
@@ -110,18 +111,28 @@ try:
     start_dt = pd.to_datetime(f"{start_date} {start_time}")
     end_dt = pd.to_datetime(f"{end_date} {end_time}")
     
-    # Required Filter 3: Canvas / Campaign Name
+    # 3. Campaign Search
     st.sidebar.markdown("**3. Campaign Specifications**")
     name_include = st.sidebar.text_input("Canvas / Campaign Name", placeholder="e.g. BNE, Referral...")
     
-    # Required Filter 4 & 5: Channel & Step (For Communications)
+    # 4. Communication Channel & Cascading Step ID
     st.sidebar.markdown("**4. Communication Details**")
     avail_channels = df_comm['channel'].unique().tolist() if not df_comm.empty else []
     selected_channels = st.sidebar.multiselect("Select Channel", avail_channels, default=avail_channels)
     
-    avail_steps = df_comm['step_id'].dropna().unique().tolist() if not df_comm.empty and 'step_id' in df_comm.columns else []
-    selected_steps = st.sidebar.multiselect("Select Step ID", avail_steps, default=avail_steps)
+    # Cascading Step ID: Only show steps belonging to currently matched campaigns to avoid 2000+ tags
+    if not df_comm.empty and 'step_id' in df_comm.columns:
+        if name_include:
+            matched_steps = df_comm[df_comm['push_title'].str.contains(name_include, case=False, na=False)]['step_id'].dropna().unique().tolist()
+            step_options = [str(int(s)) if isinstance(s, (int, float)) and not np.isnan(s) else str(s) for s in matched_steps]
+            selected_steps = st.sidebar.multiselect("Select Step ID (Filtered by Search)", step_options, default=step_options)
+        else:
+            step_search = st.sidebar.text_input("Step ID Search (Optional)", placeholder="Enter exact Step ID...")
+            selected_steps = [step_search.strip()] if step_search.strip() else []
+    else:
+        selected_steps = []
 
+    # 5. Governance & Thresholds
     st.sidebar.markdown("**5. Advanced & Governance**")
     show_preset = st.sidebar.selectbox("Minimum Shows Volume", ["Default (1,000)", "All Data (0)", "100", "10,000"])
     min_shows = 1000 if show_preset.startswith("Default") else (0 if "All" in show_preset else int(show_preset.replace(",","")))
@@ -132,26 +143,43 @@ try:
     # 4. Apply Filters
     # ==========================================
     # In-App
-    mask_inapp = ((df_inapp['pt'] >= start_dt) & (df_inapp['pt'] <= end_dt) & (df_inapp['country'].isin(selected_countries)) & (df_inapp['city_name'].isin(selected_cities)) & (df_inapp['show_pv'] >= min_shows))
-    if name_include: mask_inapp = mask_inapp & (df_inapp['campaign_name'].str.contains(name_include, case=False, na=False))
-    if version_filter == "'All' Only (Prevents Duplication)": mask_inapp = mask_inapp & (df_inapp['campaign_ver'].astype(str).str.lower() == 'all')
-    if data_quality_filter: mask_inapp = mask_inapp & (df_inapp['data_quality_status'].str.lower() == 'valid')
+    mask_inapp = (
+        (df_inapp['pt'] >= start_dt) & (df_inapp['pt'] <= end_dt) & 
+        (df_inapp['country'].isin(selected_countries)) & 
+        (df_inapp['city_name'].isin(selected_cities)) & 
+        (df_inapp['show_pv'] >= min_shows)
+    )
+    if name_include: 
+        mask_inapp = mask_inapp & (df_inapp['campaign_name'].str.contains(name_include, case=False, na=False))
+    if version_filter == "'All' Only (Prevents Duplication)": 
+        mask_inapp = mask_inapp & (df_inapp['campaign_ver'].astype(str).str.lower() == 'all')
+    if data_quality_filter: 
+        mask_inapp = mask_inapp & (df_inapp['data_quality_status'].str.lower() == 'valid')
     f_inapp = df_inapp.loc[mask_inapp]
     
     # Promo
-    mask_promo = ((df_promo['date'] >= pd.to_datetime(start_date)) & (df_promo['date'] <= pd.to_datetime(end_date)) & (df_promo['country'].isin(selected_countries)) & (df_promo['city_name'].isin(selected_cities)))
-    if name_include: mask_promo = mask_promo & (df_promo['promocode'].str.contains(name_include, case=False, na=False))
+    mask_promo = (
+        (df_promo['date'] >= pd.to_datetime(start_date)) & 
+        (df_promo['date'] <= pd.to_datetime(end_date)) & 
+        (df_promo['country'].isin(selected_countries)) & 
+        (df_promo['city_name'].isin(selected_cities))
+    )
+    if name_include: 
+        mask_promo = mask_promo & (df_promo['promocode'].str.contains(name_include, case=False, na=False))
     f_promo = df_promo.loc[mask_promo]
     
-    # Communications (With specific bridge logic to avoid double counting)
+    # Communications
     if not df_comm.empty:
         mask_comm = (df_comm['date'] >= pd.to_datetime(start_date)) & (df_comm['date'] <= pd.to_datetime(end_date))
         if selected_cities and not df_bridge.empty:
             valid_canvas_ids = df_bridge[df_bridge['market'].isin(selected_cities)]['canvas_id']
             mask_comm = mask_comm & (df_comm['matched_canvas_id'].isin(valid_canvas_ids))
-        if selected_channels: mask_comm = mask_comm & (df_comm['channel'].isin(selected_channels))
-        if selected_steps: mask_comm = mask_comm & (df_comm['step_id'].isin(selected_steps))
-        if name_include: mask_comm = mask_comm & (df_comm['push_title'].str.contains(name_include, case=False, na=False))
+        if selected_channels: 
+            mask_comm = mask_comm & (df_comm['channel'].isin(selected_channels))
+        if selected_steps: 
+            mask_comm = mask_comm & (df_comm['step_id'].astype(str).isin(selected_steps))
+        if name_include: 
+            mask_comm = mask_comm & (df_comm['push_title'].str.contains(name_include, case=False, na=False))
         f_comm = df_comm.loc[mask_comm]
     else:
         f_comm = pd.DataFrame()
@@ -162,8 +190,6 @@ try:
     st.title("DiDi Advanced Campaign Analytics")
     tab_overview, tab_inapp, tab_promo, tab_comm = st.tabs(["🌐 Executive Overview", "📱 In-App Ads", "🎟️ Promo Codes", "✉️ Communications"])
     
-    # ... [Tab 0, Tab 1, Tab 2 code remains identical to previous version, ensuring high-quality charts stay intact] ...
-    
     with tab_overview:
         st.subheader("Cross-Channel Performance Summary")
         kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
@@ -173,7 +199,7 @@ try:
         kpi4.metric("Actual Ride Usages", f"{f_promo['usage_count'].sum():,.0f}")
         kpi5.metric("Total Comm Sends", f"{f_comm['sends'].sum():,.0f}" if not f_comm.empty else "0")
         st.markdown("---")
-        # Ensure charts don't break if data is empty
+        
         row1_col1, row1_col2 = st.columns([2, 1])
         with row1_col1:
             st.markdown("**1. Unified Marketing ROI Trend**")
@@ -229,9 +255,6 @@ try:
         st.subheader("📋 Promo Code Raw Data")
         st.dataframe(f_promo[['date', 'city_name', 'promocode', 'redemption_count', 'usage_count']], column_config={"date": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD")}, use_container_width=True, hide_index=True)
 
-    # ---------------------------------------------------------
-    # TAB 3: COMMUNICATIONS (Aligned with Real Dictionary)
-    # ---------------------------------------------------------
     with tab_comm:
         st.subheader("Communications (Push / Email / SMS)")
         
@@ -263,7 +286,7 @@ try:
             with co5:
                 st.markdown("**5. Engagement by Hour of Day**")
                 hour_eff = f_comm.groupby('hour_of_day')['clicks'].sum().reset_index()
-                st.plotly_chart(px.bar(hour_eff, x='hour_of_day', y='clicks'), use_container_width=True)
+                st.plotly_chart(px.bar(hour_eff, x='hour_of_day', y='clicks', title="Clicks Generated by Hour"), use_container_width=True)
                 
             with co6:
                 st.markdown("**6. Engagement Heatmap (Day vs Hour)**")
@@ -272,13 +295,10 @@ try:
                 comm_heat = comm_heat.reindex([d for d in days_order if d in comm_heat.index])
                 st.plotly_chart(px.imshow(comm_heat, aspect="auto", color_continuous_scale='PuBuGn'), use_container_width=True)
 
-            # --- Clean, User-Friendly Data Table ---
             st.markdown("---")
             st.subheader("📋 Communications Raw Data (Actionable View)")
             
-            # Select strictly requested/relevant columns based on screenshots
             clean_comm_df = f_comm[['date', 'channel', 'push_title', 'step_id', 'target_markets', 'sends', 'clicks']]
-            
             st.dataframe(
                 clean_comm_df,
                 column_config={
