@@ -117,17 +117,28 @@ try:
     min_date = df_inapp['pt'].min().date()
     max_date = df_inapp['pt'].max().date()
     col_d1, col_d2 = st.sidebar.columns(2)
-    with col_d1: start_date = st.date_input("Start Date", min_date)
-    with col_d2: end_date = st.date_input("End Date", max_date)
-    start_dt = pd.to_datetime(f"{start_date} {datetime.time(0, 0)}")
-    end_dt = pd.to_datetime(f"{end_date} {datetime.time(23, 59)}")
+    with col_d1: 
+        start_date = st.date_input("Start Date", min_date)
+        # Dummy time input for UI purposes only
+        st.time_input("Start Time", datetime.time(0, 0), help="Time selection is for UI display purposes only.")
+    with col_d2: 
+        end_date = st.date_input("End Date", max_date)
+        # Dummy time input for UI purposes only
+        st.time_input("End Time", datetime.time(23, 59), help="Time selection is for UI display purposes only.")
+        
+    # Using only dates for actual dataframe filtering to prevent logic breaks
+    start_dt = pd.to_datetime(start_date)
+    end_dt = pd.to_datetime(end_date)
     
     st.sidebar.markdown("**3. Global Name Search**")
     name_include = st.sidebar.text_input("Keyword", placeholder="e.g. BNE, Referral...")
     
     st.sidebar.markdown("**4. Minimum Exposure**")
-    show_preset = st.sidebar.selectbox("Minimum Shows Volume", ["Default (1,000)", "All Data (0)", "100", "10,000"])
-    min_shows = 1000 if show_preset.startswith("Default") else (0 if "All" in show_preset else int(show_preset.replace(",","")))
+    show_preset = st.sidebar.selectbox("Minimum Shows Volume", ["Default (1,000)", "All Data (0)", "100", "10,000", "Custom..."])
+    if show_preset == "Custom...":
+        min_shows = st.sidebar.number_input("Enter Custom Min Shows", min_value=0, value=500, step=100)
+    else:
+        min_shows = 1000 if show_preset.startswith("Default") else (0 if "All" in show_preset else int(show_preset.replace(",","")))
 
     # Apply Base Global Filters
     base_inapp = df_inapp[
@@ -167,6 +178,188 @@ try:
         "✉️ Communications"
     ])
     
+    # ---------------- TAB 0: EXECUTIVE OVERVIEW (10 Charts + Matrix + Raw Data) ----------------
+    with tab_overview:
+        st.markdown("##### 🏆 Cross-Platform Executive Summary")
+        
+        # --- Pre-calculate unified DataFrames for Overview ---
+        gov_inapp_ov = base_inapp[base_inapp['campaign_ver'].astype(str).str.lower() == 'all']
+        gov_promo_ov = base_promo[base_promo['usage_count'] <= base_promo['redemption_count']]
+        gov_comm_ov = base_comm.copy()
+        
+        o_kpi1, o_kpi2, o_kpi3, o_kpi4, o_kpi5 = st.columns(5)
+        o_kpi1.metric("Total In-App Shows", f"{gov_inapp_ov['show_pv'].sum():,.0f}")
+        o_kpi2.metric("Total In-App Clicks", f"{gov_inapp_ov['click_pv'].sum():,.0f}")
+        o_kpi3.metric("Promo Redemptions", f"{gov_promo_ov['redemption_count'].sum():,.0f}")
+        o_kpi4.metric("Actual Ride Usages", f"{gov_promo_ov['usage_count'].sum():,.0f}")
+        o_kpi5.metric("Total Comm Delivered", f"{gov_comm_ov['delivered_count'].sum():,.0f}" if not gov_comm_ov.empty else "0")
+        
+        st.markdown("---")
+        
+        # ROW 1: 1. Trend & 2. Donut
+        or_col1, or_col2 = st.columns([2, 1])
+        with or_col1:
+            st.markdown("**1. Unified Marketing ROI Trend**")
+            t_ia = gov_inapp_ov.groupby('pt')['show_pv'].sum().reset_index().rename(columns={'pt':'Date', 'show_pv':'Value'}); t_ia['Platform'] = 'In-App'
+            t_pr = gov_promo_ov.groupby('date')['redemption_count'].sum().reset_index().rename(columns={'date':'Date', 'redemption_count':'Value'}); t_pr['Platform'] = 'Promo'
+            t_co = gov_comm_ov.groupby('date')['delivered_count'].sum().reset_index().rename(columns={'date':'Date', 'delivered_count':'Value'}) if not gov_comm_ov.empty else pd.DataFrame()
+            if not t_co.empty: t_co['Platform'] = 'Comm'
+            fig_trend_all = px.line(pd.concat([t_ia, t_pr, t_co]), x='Date', y='Value', color='Platform', markers=True, color_discrete_sequence=['#4C72B0', '#C44E52', '#55A868'])
+            st.plotly_chart(fig_trend_all, use_container_width=True)
+        with or_col2:
+            st.markdown("**2. Interaction Source Distribution**")
+            pie_df = pd.DataFrame({'Platform': ['In-App Clicks', 'Promo Usages', 'Comm Clicks'], 
+                                   'Volume': [gov_inapp_ov['click_pv'].sum(), gov_promo_ov['usage_count'].sum(), gov_comm_ov['clicks'].sum() if not gov_comm_ov.empty else 0]})
+            fig_pie = px.pie(pie_df, values='Volume', names='Platform', hole=0.4, color_discrete_sequence=['#4C72B0', '#C44E52', '#55A868'])
+            st.plotly_chart(fig_pie, use_container_width=True)
+
+        # ROW 2: 3. Funnel & 4. Radar
+        st.markdown("---")
+        row2_c1, row2_c2 = st.columns(2)
+        with row2_c1:
+            st.markdown("**3. Master Conversion Funnel**")
+            total_exp = gov_inapp_ov['show_pv'].sum() + gov_promo_ov['redemption_count'].sum() + (gov_comm_ov['delivered_count'].sum() if not gov_comm_ov.empty else 0)
+            total_int = gov_inapp_ov['click_pv'].sum() + gov_promo_ov['usage_count'].sum() + (gov_comm_ov['clicks'].sum() if not gov_comm_ov.empty else 0)
+            total_conv = gov_promo_ov['usage_count'].sum() # Assuming usage is ultimate conversion here
+            fig_funnel_all = go.Figure(go.Funnel(y=['Exposure / Claims', 'Interactions / Clicks', 'Ultimate Conversions'], x=[total_exp, total_int, total_conv], marker={"color": ["#4C72B0", "#55A868", "#C44E52"]}))
+            st.plotly_chart(fig_funnel_all, use_container_width=True)
+        with row2_c2:
+            st.markdown("**4. Cross-Platform Engagement Radar**")
+            radar_df = pd.DataFrame(dict(
+                r=[gov_inapp_ov['show_pv'].sum(), gov_promo_ov['redemption_count'].sum(), gov_inapp_ov['click_pv'].sum(), gov_comm_ov['clicks'].sum() if not gov_comm_ov.empty else 0],
+                theta=['In-App Shows', 'Promo Claims', 'In-App Clicks', 'Comm Clicks']))
+            fig_radar = px.line_polar(radar_df, r='r', theta='theta', line_close=True)
+            fig_radar.update_traces(fill='toself', line_color='#8172B3')
+            st.plotly_chart(fig_radar, use_container_width=True)
+
+        # ROW 3: 5. City Bar & 6. Efficiency Bar
+        st.markdown("---")
+        row3_c1, row3_c2 = st.columns(2)
+        with row3_c1:
+            st.markdown("**5. City Leaderboard (Total Interactions)**")
+            city_ia = gov_inapp_ov.groupby('city_name')['click_pv'].sum().reset_index().rename(columns={'city_name':'City', 'click_pv':'Interactions'})
+            city_pr = gov_promo_ov.groupby('city_name')['usage_count'].sum().reset_index().rename(columns={'city_name':'City', 'usage_count':'Interactions'})
+            city_all = pd.concat([city_ia, city_pr]).groupby('City')['Interactions'].sum().reset_index()
+            fig_city_all = px.bar(city_all.sort_values('Interactions', ascending=True).tail(10), x='Interactions', y='City', orientation='h', color='Interactions', color_continuous_scale='Blues')
+            st.plotly_chart(fig_city_all, use_container_width=True)
+        with row3_c2:
+            st.markdown("**6. Platform Efficiency Comparison (%)**")
+            eff_ia = (gov_inapp_ov['click_pv'].sum() / gov_inapp_ov['show_pv'].sum() * 100) if gov_inapp_ov['show_pv'].sum() else 0
+            eff_pr = (gov_promo_ov['usage_count'].sum() / gov_promo_ov['redemption_count'].sum() * 100) if gov_promo_ov['redemption_count'].sum() else 0
+            eff_co = (gov_comm_ov['clicks'].sum() / gov_comm_ov['delivered_count'].sum() * 100) if not gov_comm_ov.empty and gov_comm_ov['delivered_count'].sum() else 0
+            eff_df = pd.DataFrame({'Platform': ['In-App (CTR)', 'Promo (Util Rate)', 'Comm (Click Rate)'], 'Rate (%)': [eff_ia, eff_pr, eff_co]})
+            fig_eff = px.bar(eff_df, x='Platform', y='Rate (%)', color='Platform', color_discrete_sequence=['#4C72B0', '#C44E52', '#55A868'])
+            st.plotly_chart(fig_eff, use_container_width=True)
+
+        # ROW 4: 7. Day Heatmap & 8. Cumulative Area
+        st.markdown("---")
+        row4_c1, row4_c2 = st.columns(2)
+        with row4_c1:
+            st.markdown("**7. Day of Week Activity Heatmap (All Interactions)**")
+            dw_ia = gov_inapp_ov.groupby('day_of_week')['click_pv'].sum().reset_index().rename(columns={'click_pv':'Volume'})
+            dw_pr = gov_promo_ov.groupby('day_of_week')['usage_count'].sum().reset_index().rename(columns={'usage_count':'Volume'})
+            dw_co = gov_comm_ov.groupby('day_of_week')['clicks'].sum().reset_index().rename(columns={'clicks':'Volume'}) if not gov_comm_ov.empty else pd.DataFrame(columns=['day_of_week', 'Volume'])
+            dw_ia['Platform'] = 'In-App'; dw_pr['Platform'] = 'Promo'; dw_co['Platform'] = 'Comm'
+            dw_all = pd.concat([dw_ia, dw_pr, dw_co])
+            if not dw_all.empty:
+                heat_all = dw_all.pivot_table(index='Platform', columns='day_of_week', values='Volume', aggfunc='sum').fillna(0)
+                days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+                heat_all = heat_all.reindex(columns=[d for d in days_order if d in heat_all.columns])
+                fig_heat_all = px.imshow(heat_all, aspect="auto", color_continuous_scale='YlOrRd')
+                st.plotly_chart(fig_heat_all, use_container_width=True)
+            else:
+                st.info("Insufficient data for heatmap.")
+        with row4_c2:
+            st.markdown("**8. Cumulative Interactions Over Time**")
+            cum_all = pd.concat([t_ia.rename(columns={'Value':'Interactions'}), t_pr.rename(columns={'Value':'Interactions'}), t_co.rename(columns={'Value':'Interactions'})])
+            if not cum_all.empty:
+                cum_all = cum_all.groupby('Date')['Interactions'].sum().reset_index()
+                cum_all['Cumulative'] = cum_all['Interactions'].cumsum()
+                fig_cum_all = px.area(cum_all, x='Date', y='Cumulative', color_discrete_sequence=['#8172B3'])
+                st.plotly_chart(fig_cum_all, use_container_width=True)
+
+        # Build Unified Campaign Matrix DataFrame
+        ia_mat = gov_inapp_ov.groupby('campaign_name').agg({'show_pv':'sum', 'click_pv':'sum'}).reset_index().rename(columns={'campaign_name':'Campaign/Code', 'show_pv':'Exposure/Deliveries', 'click_pv':'Interactions'})
+        ia_mat['Platform'] = 'In-App'
+        
+        pr_mat = gov_promo_ov.groupby('promocode').agg({'redemption_count':'sum', 'usage_count':'sum'}).reset_index().rename(columns={'promocode':'Campaign/Code', 'redemption_count':'Exposure/Deliveries', 'usage_count':'Interactions'})
+        pr_mat['Platform'] = 'Promo'
+        
+        if not gov_comm_ov.empty:
+            co_mat = gov_comm_ov.groupby('push_title').agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index().rename(columns={'push_title':'Campaign/Code', 'delivered_count':'Exposure/Deliveries', 'clicks':'Interactions'})
+            co_mat['Platform'] = 'Communication'
+        else:
+            co_mat = pd.DataFrame()
+            
+        unified_matrix = pd.concat([ia_mat, pr_mat, co_mat], ignore_index=True)
+        unified_matrix['Efficiency Rate (%)'] = (unified_matrix['Interactions'] / unified_matrix['Exposure/Deliveries'] * 100).fillna(0)
+
+        # ROW 5: 9. Platform Scatter & 10. Cross-Platform Leaderboard
+        st.markdown("---")
+        row5_c1, row5_c2 = st.columns(2)
+        with row5_c1:
+            st.markdown("**9. Cross-Platform Performance Scatter**")
+            if not unified_matrix.empty:
+                fig_scat = px.scatter(unified_matrix, x='Exposure/Deliveries', y='Efficiency Rate (%)', color='Platform', size='Interactions', hover_name='Campaign/Code', color_discrete_map={'In-App':'#4C72B0', 'Promo':'#C44E52', 'Communication':'#55A868'})
+                st.plotly_chart(fig_scat, use_container_width=True)
+        with row5_c2:
+            st.markdown("**10. Top 15 Cross-Platform Campaigns (by Efficiency)**")
+            if not unified_matrix.empty:
+                top_15_all = unified_matrix[unified_matrix['Exposure/Deliveries'] > min_shows].nlargest(15, 'Efficiency Rate (%)').sort_values('Efficiency Rate (%)', ascending=True)
+                fig_top15 = px.bar(top_15_all, x='Efficiency Rate (%)', y='Campaign/Code', color='Platform', orientation='h', color_discrete_map={'In-App':'#4C72B0', 'Promo':'#C44E52', 'Communication':'#55A868'})
+                fig_top15.update_layout(height=400)
+                st.plotly_chart(fig_top15, use_container_width=True)
+
+        # ROW 6: Cross-Platform Campaign Performance Matrix
+        st.markdown("---")
+        st.markdown("##### 🏆 Cross-Platform Campaign Performance Matrix (Full View)")
+        st.dataframe(
+            unified_matrix.sort_values('Interactions', ascending=False),
+            column_config={
+                "Platform": st.column_config.TextColumn("Platform", width="small"),
+                "Campaign/Code": st.column_config.TextColumn("Campaign / Promo Code", width="large"),
+                "Exposure/Deliveries": st.column_config.NumberColumn("Exposure / Claims / Deliveries", format="%d"),
+                "Interactions": st.column_config.NumberColumn("Interactions / Usages / Clicks", format="%d"),
+                "Efficiency Rate (%)": st.column_config.NumberColumn("Efficiency Rate (%)", format="%.2f%%")
+            },
+            use_container_width=True, hide_index=True
+        )
+
+        # ROW 7: Unified Raw Data Table
+        st.markdown("---")
+        st.markdown("##### 📋 Unified Raw Data (Actionable View)")
+        
+        # Build Unified Raw Data
+        raw_ia = gov_inapp_ov[['pt', 'city_name', 'campaign_name', 'show_pv', 'click_pv', 'url']].rename(columns={'pt':'Date', 'city_name':'City', 'campaign_name':'Campaign/Code', 'show_pv':'Exposure/Deliveries', 'click_pv':'Interactions', 'url':'URL'})
+        raw_ia['Platform'] = 'In-App'
+        
+        raw_pr = gov_promo_ov[['date', 'city_name', 'promocode', 'redemption_count', 'usage_count', 'url']].rename(columns={'date':'Date', 'city_name':'City', 'promocode':'Campaign/Code', 'redemption_count':'Exposure/Deliveries', 'usage_count':'Interactions', 'url':'URL'})
+        raw_pr['Platform'] = 'Promo'
+        
+        if not gov_comm_ov.empty:
+            raw_co = gov_comm_ov[['date', 'target_markets', 'push_title', 'delivered_count', 'clicks', 'url']].rename(columns={'date':'Date', 'target_markets':'City', 'push_title':'Campaign/Code', 'delivered_count':'Exposure/Deliveries', 'clicks':'Interactions', 'url':'URL'})
+            raw_co['Platform'] = 'Communication'
+        else:
+            raw_co = pd.DataFrame()
+            
+        unified_raw = pd.concat([raw_ia, raw_pr, raw_co], ignore_index=True)
+        # Reorder columns
+        unified_raw = unified_raw[['Date', 'Platform', 'City', 'Campaign/Code', 'Exposure/Deliveries', 'Interactions', 'URL']]
+        
+        st.dataframe(
+            unified_raw,
+            column_config={
+                "Date": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"),
+                "Platform": "Platform",
+                "City": "City",
+                "Campaign/Code": "Campaign / Promo Code",
+                "Exposure/Deliveries": "Volume",
+                "Interactions": "Interactions",
+                "URL": st.column_config.LinkColumn("Redirect URL", display_text="🔗 View Campaign")
+            },
+            use_container_width=True, hide_index=True
+        )
+
     # ---------------- TAB 1: IN-APP ----------------
     with tab_inapp:
         st.subheader("In-App Advertising Suite")
@@ -352,7 +545,6 @@ try:
         st.markdown("---")
         st.markdown("**📋 Promo Codes Raw Data (Actionable View)**")
         
-        # Calculate row-level utilisation rate specifically for the raw data view
         gov_promo['Utilisation Rate (%)'] = (gov_promo['usage_count'] / gov_promo['redemption_count'] * 100).replace([np.inf, -np.inf], 0).fillna(0)
         
         st.dataframe(
@@ -573,7 +765,7 @@ try:
                         heat_df = heat_df.reindex([d for d in days_order if d in heat_df.index])
                         st.plotly_chart(px.imshow(heat_df, aspect="auto", color_continuous_scale='Blues', title="Push Shows Heatmap (Day × Hour)"), use_container_width=True)
 
-            # Communications Actionable Raw Data Table with URL
+            # Communications Actionable Raw Data Table
             st.markdown("---")
             st.markdown("**📋 Communications Raw Data (Actionable View)**")
             st.dataframe(
@@ -588,31 +780,6 @@ try:
             )
         else:
             st.warning("No communication data matches the current global filters.")
-
-    # ---------------- TAB 0: OVERVIEW ----------------
-    with tab_overview:
-        st.markdown("##### Cross-Channel Performance Summary")
-        o_kpi1, o_kpi2, o_kpi3, o_kpi4, o_kpi5 = st.columns(5)
-        o_kpi1.metric("Total In-App Shows", f"{gov_inapp['show_pv'].sum():,.0f}")
-        o_kpi2.metric("Total In-App Clicks", f"{gov_inapp['click_pv'].sum():,.0f}")
-        o_kpi3.metric("Promo Redemptions", f"{gov_promo['redemption_count'].sum():,.0f}")
-        o_kpi4.metric("Actual Ride Usages", f"{gov_promo['usage_count'].sum():,.0f}")
-        o_kpi5.metric("Total Comm Sends", f"{base_comm['sends'].sum():,.0f}" if not base_comm.empty else "0")
-        
-        st.markdown("---")
-        or_col1, or_col2 = st.columns([2, 1])
-        with or_col1:
-            st.markdown("**1. Unified Marketing ROI Trend**")
-            t_ia = gov_inapp.groupby('pt')['show_pv'].sum().reset_index().rename(columns={'pt':'Date', 'show_pv':'Value'}); t_ia['Channel'] = 'In-App'
-            t_pr = gov_promo.groupby('date')['redemption_count'].sum().reset_index().rename(columns={'date':'Date', 'redemption_count':'Value'}); t_pr['Channel'] = 'Promo'
-            t_co = base_comm.groupby('date')['sends'].sum().reset_index().rename(columns={'date':'Date', 'sends':'Value'}) if not base_comm.empty else pd.DataFrame()
-            if not t_co.empty:
-                t_co['Channel'] = 'Comm'
-            st.plotly_chart(px.line(pd.concat([t_ia, t_pr, t_co]), x='Date', y='Value', color='Channel', markers=True), use_container_width=True)
-        with or_col2:
-            st.markdown("**2. Traffic Source Distribution**")
-            pie_df = pd.DataFrame({'Channel': ['In-App', 'Promo', 'Comm'], 'Volume': [gov_inapp['click_pv'].sum(), gov_promo['usage_count'].sum(), base_comm['clicks'].sum() if not base_comm.empty else 0]})
-            st.plotly_chart(px.pie(pie_df, values='Volume', names='Channel', hole=0.4), use_container_width=True)
 
 except Exception as err:
     st.error(f"Error rendering dashboard: {err}")
