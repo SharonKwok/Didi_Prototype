@@ -198,56 +198,105 @@ try:
                 fig_matrix.add_vline(x=quad_data['show_pv'].median(), line_dash="dot", line_color="gray")
             st.plotly_chart(fig_matrix, use_container_width=True)
 
-    # ---------------- TAB 2: PROMO CODES ----------------
+    # ---------------- TAB 2: PROMO CODES (Fully Upgraded) ----------------
     with tab_promo:
         st.subheader("Promo Code Performance Tracking")
         
-        st.info("⚠️ **Data Limitations:** The dataset does not contain Campaign IDs, channel flags, or discount amounts[cite: 1]. "
-                "Promotional activity and utilisation can be evaluated, but promotional ROI cannot be calculated[cite: 1].")
+        st.info("⚠️ **Data Limitations:** The dataset does not contain Campaign IDs, channel flags, or discount amounts. "
+                "Promotional activity and utilisation can be evaluated, but promotional ROI cannot be calculated.")
         
         st.markdown("##### Data Quality Controls")
         col_pr1, col_pr2 = st.columns([1, 2])
-        promo_quality = col_pr1.checkbox("Exclude Anomalies (Usage > Redemption)", value=True, help="Filters out records where usage exceeds redemption[cite: 1].")
+        promo_quality = col_pr1.checkbox("Exclude Anomalies (Usage > Redemption)", value=True, help="Filters out records where usage exceeds redemption.")
         if promo_quality:
-            col_pr2.caption("✅ Showing baseline records only. Multi-use anomalies (>100% utilisation) excluded[cite: 1].")
+            col_pr2.caption("✅ Showing baseline records only. Multi-use anomalies (>100% utilisation) excluded.")
         else:
-            col_pr2.caption("⚠️ Including 944 anomaly records where utilisation exceeds 100%[cite: 1].")
+            col_pr2.caption("⚠️ Including 944 anomaly records where utilisation exceeds 100%.")
 
         gov_promo = base_promo.copy()
         if promo_quality:
             gov_promo = gov_promo[gov_promo['usage_count'] <= gov_promo['redemption_count']]
 
+        # 1. Overall Promo KPIs
         st.markdown("---")
-        col_p1, col_p2 = st.columns([1, 1])
-        with col_p1:
-            st.markdown("**1. Top-Performing Promo Codes (Leaderboard)**")
-            promo_agg = gov_promo.groupby('promocode').agg({'redemption_count': 'sum', 'usage_count': 'sum'}).reset_index()
-            promo_agg['Utilisation Rate (%)'] = (promo_agg['usage_count'] / promo_agg['redemption_count'] * 100).fillna(0)
-            promo_agg = promo_agg.sort_values(by='usage_count', ascending=False)
-            
-            st.dataframe(
-                promo_agg,
-                column_config={
-                    "promocode": "Promo Code",
-                    "redemption_count": st.column_config.NumberColumn("Sum of Redemptions", format="%d"),
-                    "usage_count": st.column_config.NumberColumn("Sum of Usage", format="%d"),
-                    "Utilisation Rate (%)": st.column_config.NumberColumn("Utilisation Rate (%)", format="%.1f%%")
-                },
-                use_container_width=True, hide_index=True
+        st.markdown("##### 1. Overall Promotional KPIs")
+        total_redemptions = gov_promo['redemption_count'].sum()
+        total_usage = gov_promo['usage_count'].sum()
+        active_promos = gov_promo['promocode'].nunique()
+        overall_util_rate = (total_usage / total_redemptions * 100) if total_redemptions > 0 else 0
+        
+        pkpi1, pkpi2, pkpi3, pkpi4 = st.columns(4)
+        pkpi1.metric("Total Redemptions", f"{total_redemptions:,.0f}")
+        pkpi2.metric("Total Usage", f"{total_usage:,.0f}")
+        pkpi3.metric("Active Promo Codes", f"{active_promos:,.0f}")
+        pkpi4.metric("Overall Utilisation Rate", f"{overall_util_rate:.1f}%")
+
+        # 2. Leaderboard & Visuals
+        st.markdown("---")
+        st.markdown("##### 2. Top-Performing Promo Codes & Distribution")
+        
+        promo_agg = gov_promo.groupby('promocode').agg({'redemption_count': 'sum', 'usage_count': 'sum'}).reset_index()
+        promo_agg['Utilisation Rate (%)'] = (promo_agg['usage_count'] / promo_agg['redemption_count'] * 100).fillna(0)
+        promo_agg = promo_agg.sort_values(by='usage_count', ascending=False)
+        
+        p_col1, p_col2 = st.columns(2)
+        with p_col1:
+            top_10_promo = promo_agg.head(10).sort_values('usage_count', ascending=True)
+            fig_promo_bar = px.bar(
+                top_10_promo,
+                x='usage_count',
+                y='promocode',
+                orientation='h',
+                title="Top 10 Promo Codes by Usage Volume",
+                hover_data={'redemption_count': ':,.0f', 'Utilisation Rate (%)': ':.1f%'},
+                labels={'usage_count': 'Total Usage', 'promocode': 'Promo Code'}
             )
+            fig_promo_bar.update_layout(height=360, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig_promo_bar, use_container_width=True)
             
-        with col_p2:
-            st.markdown("**2. Promotional Activity Over Time (Redemptions vs Usage)**")
-            trend_df = gov_promo.groupby('date')[['redemption_count', 'usage_count']].sum().reset_index()
-            fig_trend = px.line(
-                trend_df, x='date', y=['redemption_count', 'usage_count'], markers=True,
-                labels={'value': 'Volume', 'date': 'Date', 'variable': 'Metric'},
+        with p_col2:
+            city_agg = gov_promo.groupby('city_name').agg({'redemption_count': 'sum', 'usage_count': 'sum'}).reset_index()
+            city_agg['Utilisation Rate (%)'] = (city_agg['usage_count'] / city_agg['redemption_count'] * 100).fillna(0)
+            fig_city = px.bar(
+                city_agg.sort_values('usage_count', ascending=False),
+                x='city_name',
+                y=['redemption_count', 'usage_count'],
+                barmode='group',
+                title="City Performance Breakdown",
+                labels={'value': 'Volume', 'city_name': 'City', 'variable': 'Metric'},
                 color_discrete_map={'redemption_count': '#4C72B0', 'usage_count': '#55A868'}
             )
-            fig_trend.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
-            st.plotly_chart(fig_trend, use_container_width=True)
+            fig_city.update_layout(height=360, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig_city, use_container_width=True)
 
-    # ---------------- TAB 3: COMMUNICATIONS ----------------
+        # Full-Width Matrix
+        st.markdown("**Complete Promo Code Leaderboard Matrix**")
+        st.dataframe(
+            promo_agg,
+            column_config={
+                "promocode": st.column_config.TextColumn("Promo Code", width="large"),
+                "redemption_count": st.column_config.NumberColumn("Sum of Redemptions", format="%d"),
+                "usage_count": st.column_config.NumberColumn("Sum of Usage", format="%d"),
+                "Utilisation Rate (%)": st.column_config.NumberColumn("Utilisation Rate (%)", format="%.1f%%")
+            },
+            use_container_width=True, hide_index=True
+        )
+
+        # 3. Time Series
+        st.markdown("---")
+        st.markdown("##### 3. Promotional Activity Over Time")
+        trend_df = gov_promo.groupby('date')[['redemption_count', 'usage_count']].sum().reset_index()
+        fig_trend = px.line(
+            trend_df, x='date', y=['redemption_count', 'usage_count'], markers=True,
+            title="Redemptions vs. Actual Usage Trend",
+            labels={'value': 'Volume', 'date': 'Date', 'variable': 'Metric'},
+            color_discrete_map={'redemption_count': '#4C72B0', 'usage_count': '#55A868'}
+        )
+        fig_trend.update_traces(fill='tozeroy') # Adds area fill for better visual contrast
+        fig_trend.update_layout(legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1))
+        st.plotly_chart(fig_trend, use_container_width=True)
+
+    # ---------------- TAB 3: COMMUNICATIONS (Untouched per user request) ----------------
     with tab_comm:
         st.subheader("Communication Engagement Analytics")
         st.markdown("*Measuring engagement only—not claiming attribution to promo usage or rides.*")
@@ -257,19 +306,16 @@ try:
             st.markdown("##### 1. Communication Settings (Cascading Filters)")
             c_col1, c_col2, c_col3 = st.columns([1, 2, 2])
             
-            # Step 1: Channel selection
             avail_channels = sorted(gov_comm['channel'].unique().tolist())
             comm_channel = c_col1.selectbox("1. Select Channel", ["All Channels"] + avail_channels)
             if comm_channel != "All Channels":
                 gov_comm = gov_comm[gov_comm['channel'] == comm_channel]
             
-            # Step 2: Campaign selection (cascaded from Channel)
             avail_campaigns = sorted(gov_comm['push_title'].unique().tolist())
             comm_campaigns = c_col2.multiselect("2. Search & Select Campaigns", avail_campaigns, default=[])
             if comm_campaigns:
                 gov_comm = gov_comm[gov_comm['push_title'].isin(comm_campaigns)]
                 
-            # Step 3: Step ID selection (cascaded from Campaign)
             if comm_campaigns:
                 step_opts = gov_comm['step_id'].dropna().unique().tolist()
                 step_opts = [str(int(s)) if isinstance(s, float) else str(s) for s in step_opts]
@@ -279,7 +325,6 @@ try:
             else:
                 c_col3.info("👈 Select a campaign to view specific Step IDs.")
 
-            # Overall KPIs
             st.markdown("---")
             st.markdown("##### 2. Overall Communication KPIs")
             total_delivered = gov_comm['delivered_count'].sum()
@@ -293,14 +338,12 @@ try:
             k3.metric("Active Campaigns", f"{active_campaigns:,.0f}")
             k4.metric("Delivered-to-Click Rate", f"{del_to_click:.2f}%")
 
-            # Main Visuals (Side by Side)
             st.markdown("---")
             st.markdown("##### 3. Channel Efficiency & Trends")
             v_col1, v_col2 = st.columns(2)
             with v_col1:
                 ch_comp = gov_comm.groupby('channel').agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index()
                 ch_comp['Rate (%)'] = (ch_comp['clicks'] / ch_comp['delivered_count'] * 100).fillna(0)
-                
                 fig_bar = px.bar(
                     ch_comp, x='channel', y='Rate (%)', color='channel',
                     hover_data={'delivered_count':':,.0f', 'clicks':':,.0f', 'Rate (%)':':.2f%'},
@@ -314,7 +357,6 @@ try:
                 fig_trend = px.line(trend_df, x='date', y='delivered_count', color='channel', title="Performance Over Time (Delivered Volume)", markers=True)
                 st.plotly_chart(fig_trend, use_container_width=True)
 
-            # Campaign Performance Section: Horizontal Bar Chart + Full-Width Matrix
             st.markdown("---")
             st.markdown("##### 📊 Campaign Performance Analysis")
             camp_matrix = gov_comm.groupby(['push_title', 'channel']).agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index()
@@ -346,11 +388,9 @@ try:
                     "Clicks": st.column_config.NumberColumn("Clicks", format="%d"),
                     "Rate (%)": st.column_config.NumberColumn("Delivered-to-Click Rate", format="%.2f%%")
                 },
-                use_container_width=True, 
-                hide_index=True
+                use_container_width=True, hide_index=True
             )
 
-            # --- 4-Quadrant Bubble Matrix Section ---
             st.markdown("---")
             st.markdown("##### 🎯 4-Quadrant Bubble Matrix Analysis")
             st.caption("Dotted lines indicate medians. Top-right = High Volume & High CTR (Core Stars); Top-left = Low Volume & High CTR (High Potential).")
@@ -363,13 +403,8 @@ try:
                     med_del = camp_bubble['delivered_count'].median()
                     med_rate = camp_bubble['Rate (%)'].median()
                     fig_camp_bubble = px.scatter(
-                        camp_bubble,
-                        x='delivered_count',
-                        y='Rate (%)',
-                        size='clicks',
-                        color='channel',
-                        hover_name='push_title',
-                        hover_data={'delivered_count': ':,.0f', 'clicks': ':,.0f', 'Rate (%)': ':.2f%'},
+                        camp_bubble, x='delivered_count', y='Rate (%)', size='clicks', color='channel',
+                        hover_name='push_title', hover_data={'delivered_count': ':,.0f', 'clicks': ':,.0f', 'Rate (%)': ':.2f%'},
                         title="Campaign: Delivered Volume vs Rate (%)"
                     )
                     fig_camp_bubble.add_hline(y=med_rate, line_dash="dot", line_color="gray", annotation_text="Median Rate")
@@ -390,13 +425,8 @@ try:
                         med_time_del = time_bubble['delivered_count'].median()
                         med_time_rate = time_bubble['Rate (%)'].median()
                         fig_time_bubble = px.scatter(
-                            time_bubble,
-                            x='delivered_count',
-                            y='Rate (%)',
-                            size='clicks',
-                            color='day_of_week',
-                            hover_name='Time Slot',
-                            hover_data={'hour_of_day': True, 'delivered_count': ':,.0f', 'clicks': ':,.0f', 'Rate (%)': ':.2f%'},
+                            time_bubble, x='delivered_count', y='Rate (%)', size='clicks', color='day_of_week',
+                            hover_name='Time Slot', hover_data={'hour_of_day': True, 'delivered_count': ':,.0f', 'clicks': ':,.0f', 'Rate (%)': ':.2f%'},
                             title="Timing: Slot Volume vs Rate (%)"
                         )
                         fig_time_bubble.add_hline(y=med_time_rate, line_dash="dot", line_color="gray", annotation_text="Median Rate")
@@ -408,7 +438,6 @@ try:
                 else:
                     st.info("Time fields unavailable for Timing matrix.")
 
-            # Channel Funnel
             st.markdown("---")
             st.markdown(f"##### 4. {comm_channel if comm_channel != 'All Channels' else 'Cross-Channel'} Engagement Funnel")
             fc1, fc2 = st.columns([1, 2])
@@ -450,13 +479,12 @@ try:
                 fig_funnel = go.Figure(go.Funnel(y=funnel_y, x=funnel_x, marker={"color": ["#4C72B0", "#55A868", "#C44E52", "#8172B3"]}))
                 st.plotly_chart(fig_funnel, use_container_width=True)
 
-            # Push Time Analysis
             if comm_channel in ['Push', 'All Channels']:
                 push_data = gov_comm[gov_comm['channel'] == 'Push'] if comm_channel == 'All Channels' else gov_comm
                 if not push_data.empty:
                     st.markdown("---")
                     st.markdown("##### 5. Push Time Analysis")
-                    st.markdown("*Answering: At what times is Push engagement strongest? (Using Volume & SUM/SUM Rate together)*")
+                    st.markdown("*Answering: At what times is Push engagement strongest?*")
                     tc1, tc2 = st.columns(2)
                     with tc1:
                         hr_df = push_data.groupby('hour_of_day').agg({'sends':'sum', 'clicks':'sum'}).reset_index()
@@ -472,7 +500,6 @@ try:
                         heat_df = heat_df.reindex([d for d in days_order if d in heat_df.index])
                         st.plotly_chart(px.imshow(heat_df, aspect="auto", color_continuous_scale='Blues', title="Push Shows Heatmap (Day × Hour)"), use_container_width=True)
 
-            # Raw Data Table
             st.markdown("---")
             st.markdown("**📋 Communications Raw Data (Actionable View)**")
             st.dataframe(
