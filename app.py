@@ -1,67 +1,71 @@
-import streamlit as st
-import pandas as pd
+import dash
+from dash import dcc, html
 import plotly.express as px
 
-# 1. 設置網頁標題與版面寬度
-st.set_page_config(page_title="DiDi Promotional Dashboard", layout="wide")
+# --- Assume df_comm_new, df_promo, and all aggregated dataframes (daily_comm_perf, etc.)
+# --- and figure objects (fig_daily_comm, fig_daily_ctr, etc.) are available from previous steps.
 
-st.title("🚗 DiDi Promotional Campaign Dashboard")
-st.markdown("*Serving as a user-centred decision-support platform that empowers teams (Popovič et al., 2012).*")
-st.markdown("---")
+# Initialize the Dash app
+app = dash.Dash(__name__)
 
-# 2. 讀取並清理資料 (使用 @st.cache_data 讓網頁載入更快)
-@st.cache_data
-def load_data():
-    # 讀取 Promo 資料
-    df_promo = pd.read_excel("Promocode_Performance.xlsx", sheet_name="Reporting Data")
-    df_promo['date'] = pd.to_datetime(df_promo['date'])
-    df_promo['Day of Week'] = df_promo['date'].dt.day_name()
-    return df_promo
+# Define the app layout
+app.layout = html.Div(children=[
+    html.H1(children='Didi Marketing Performance Dashboard', style={'textAlign': 'center'}),
 
-try:
-    df_promo = load_data()
-    
-    # 3. 準備學術級視覺化圖表
-    
-    # [圖表 A: Line Chart] - 跨滿整個螢幕寬度
-    st.subheader("📈 1. Campaign Performance Trend")
-    st.markdown("Utilising line charts to track performance trends over time.")
-    
-    trend_data = df_promo.groupby('date')[['redemption_count', 'usage_count']].sum().reset_index()
-    fig_line = px.line(trend_data, x='date', y=['redemption_count', 'usage_count'], 
-                       labels={'value': 'Count', 'date': 'Date', 'variable': 'Metrics'},
-                       markers=True)
-    # 在 Streamlit 中顯示 Plotly 圖表
-    st.plotly_chart(fig_line, use_container_width=True)
-    
-    st.markdown("---")
-    
-    # 將畫面切分成左右兩欄，放置 Bar Chart 與 Heatmap
-    col1, col2 = st.columns(2)
-    
-    # [圖表 B: Bar Chart] - 放在左欄
-    with col1:
-        st.subheader("📊 2. Redemptions by City")
-        st.markdown("Bar charts to compare conversion rates across categories.")
-        
-        bar_data = df_promo.groupby('city_name')['redemption_count'].sum().reset_index().sort_values(by='redemption_count', ascending=False)
-        fig_bar = px.bar(bar_data, x='city_name', y='redemption_count', 
-                         labels={'city_name': 'City', 'redemption_count': 'Total Redemptions'},
-                         color='city_name')
-        st.plotly_chart(fig_bar, use_container_width=True)
+    html.H2(children='Communication Performance', style={'textAlign': 'center'}),
+    html.Div(children='Key metrics for in-app and communication campaigns.', style={'textAlign': 'center', 'marginBottom': '20px'}),
 
-    # [圖表 C: Heatmap] - 放在右欄
-    with col2:
-        st.subheader("🗺️ 3. Peak Usage Periods")
-        st.markdown("Heatmaps to pinpoint peak redemption periods.")
-        
-        heat_data = df_promo.pivot_table(index='Day of Week', columns='city_name', values='usage_count', aggfunc='sum').fillna(0)
-        days_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        heat_data = heat_data.reindex(days_order)
-        fig_heat = px.imshow(heat_data, 
-                             labels=dict(x="City", y="Day of Week", color="Usage Count"),
-                             aspect="auto", color_continuous_scale='Blues')
-        st.plotly_chart(fig_heat, use_container_width=True)
+    html.Div([
+        html.Div([
+            html.H3('Daily Shows and Clicks'),
+            dcc.Graph(id='daily-comm-graph', figure=fig_daily_comm)
+        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'}),
+        html.Div([
+            html.H3('Daily Click-Through Rate (CTR)'),
+            dcc.Graph(id='daily-ctr-graph', figure=fig_daily_ctr)
+        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'})
+    ], style={'display': 'flex', 'flex-wrap': 'wrap'}),
 
-except Exception as e:
-    st.error(f"⚠️ 資料讀取失敗，請確認 'Promocode_Performance.xlsx' 檔案與 app.py 放在同一個資料夾下。詳細錯誤: {e}")
+    html.Div([
+        html.Div([
+            html.H3('Top 10 Campaigns by Clicks'),
+            dcc.Graph(id='top-campaigns-graph', figure=fig_top_campaigns)
+        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'}),
+        html.Div([
+            html.H3('Clicks by Day of Week and Hour'),
+            dcc.Graph(id='heatmap-clicks-graph', figure=fig_heatmap)
+        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'})
+    ], style={'display': 'flex', 'flex-wrap': 'wrap'}),
+
+    html.H2(children='Promocode Performance', style={'textAlign': 'center', 'marginTop': '40px'}),
+    html.Div(children='Analysis of promocode redemptions and usages across cities.', style={'textAlign': 'center', 'marginBottom': '20px'}),
+
+    html.Div([
+        html.Div([
+            html.H3('Daily Promocode Redemptions and Usages'),
+            dcc.Graph(id='daily-promo-graph', figure=fig_daily_promo)
+        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'}),
+        html.Div([
+            html.H3('Top 10 Promocodes by Usage'),
+            dcc.Graph(id='top-promocodes-graph', figure=fig_top_promocodes)
+        ], style={'width': '49%', 'display': 'inline-block', 'padding': '0 20'})
+    ], style={'display': 'flex', 'flex-wrap': 'wrap'}),
+
+    html.Div([
+        html.Div([
+            html.H3('Promocode Redemptions and Usages by City'),
+            dcc.Graph(id='city-promo-graph', figure=fig_city_promo)
+        ], style={'width': '100%', 'padding': '0 20'})
+    ], style={'display': 'flex', 'flex-wrap': 'wrap'})
+
+])
+
+# Run the app
+if __name__ == '__main__':
+    # In a local environment, you would typically run app.run_server(debug=True)
+    # For Colab, you might use jupyter_dash or ngrok for public access, but direct running
+    # of app.run_server() here won't create a persistent web server visible to your browser.
+    print("To run this Dash app, save it as a .py file and execute 'python app.py' in your terminal.")
+    print("Install Dash with: pip install dash pandas plotly")
+    # The line below is commented out because it will cause a ModuleNotFoundError in Colab if Dash is not installed via !pip install dash
+    # app.run_server(debug=True)
