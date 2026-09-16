@@ -63,7 +63,7 @@ def load_data():
             df_comm['opens'] = (df_comm['delivered_count'] * np.random.uniform(0.3, 0.6, size=len(df_comm))).astype(int)
             df_comm['opens'] = df_comm[['opens', 'clicks']].max(axis=1)
             
-            # Generate simulated Email & SMS data to meet multi-channel requirements
+            # Generate simulated Email & SMS data to satisfy comparative funnel requirements
             df_email = df_comm.sample(frac=0.4).copy()
             df_email['channel'] = 'Email'
             df_email['delivered_count'] = (df_email['delivered_count'] * 1.5).astype(int)
@@ -123,7 +123,7 @@ try:
     st.sidebar.markdown("**3. Global Name Search**")
     name_include = st.sidebar.text_input("Keyword", placeholder="e.g. BNE, Referral...")
     
-    # Global Show Volume (Mainly In-App)
+    # Global Exposure Volume (Mainly In-App)
     st.sidebar.markdown("**4. Minimum Exposure**")
     show_preset = st.sidebar.selectbox("Minimum Shows Volume", ["Default (1,000)", "All Data (0)", "100", "10,000"])
     min_shows = 1000 if show_preset.startswith("Default") else (0 if "All" in show_preset else int(show_preset.replace(",","")))
@@ -290,14 +290,13 @@ try:
             
             k1, k2, k3, k4 = st.columns(4)
             k1.metric("Delivered Communications", f"{total_delivered:,.0f}")
-            k1_note = "Arrived" if comm_channel == 'Push' else "Delivered"
             k2.metric("Total Clicks", f"{total_clicks:,.0f}")
             k3.metric("Active Campaigns", f"{active_campaigns:,.0f}")
             k4.metric("Delivered-to-Click Rate", f"{del_to_click:.2f}%")
 
-            # Main Visuals
+            # Main Visuals (Side by Side)
             st.markdown("---")
-            st.markdown("##### 3. Main Visuals")
+            st.markdown("##### 3. Channel Efficiency & Trends")
             v_col1, v_col2 = st.columns(2)
             with v_col1:
                 ch_comp = gov_comm.groupby('channel').agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index()
@@ -312,17 +311,47 @@ try:
                 st.plotly_chart(fig_bar, use_container_width=True)
                 
             with v_col2:
-                camp_matrix = gov_comm.groupby(['push_title', 'channel']).agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index()
-                camp_matrix['Rate (%)'] = (camp_matrix['clicks'] / camp_matrix['delivered_count'] * 100).fillna(0)
-                st.markdown("**Campaign Performance Matrix**")
-                st.dataframe(
-                    camp_matrix.sort_values('delivered_count', ascending=False).rename(columns={'push_title':'Campaign', 'delivered_count':'Delivered'}), 
-                    use_container_width=True, hide_index=True
-                )
+                trend_df = gov_comm.groupby(['date', 'channel']).agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index()
+                fig_trend = px.line(trend_df, x='date', y='delivered_count', color='channel', title="Performance Over Time (Delivered Volume)", markers=True)
+                st.plotly_chart(fig_trend, use_container_width=True)
 
-            trend_df = gov_comm.groupby(['date', 'channel']).agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index()
-            fig_trend = px.line(trend_df, x='date', y='delivered_count', color='channel', title="Performance Over Time (Delivered Volume)", markers=True)
-            st.plotly_chart(fig_trend, use_container_width=True)
+            # Campaign Performance Section: Visual + Full-Width Matrix
+            st.markdown("---")
+            st.markdown("##### 📊 Campaign Performance Analysis")
+            camp_matrix = gov_comm.groupby(['push_title', 'channel']).agg({'delivered_count':'sum', 'clicks':'sum'}).reset_index()
+            camp_matrix['Rate (%)'] = (camp_matrix['clicks'] / camp_matrix['delivered_count'] * 100).fillna(0)
+            
+            # Accompanying Visual: Horizontal Bar Chart of Top 10 Campaigns
+            top_camps = camp_matrix.nlargest(10, 'Rate (%)').sort_values('Rate (%)', ascending=True)
+            fig_top_camps = px.bar(
+                top_camps, 
+                x='Rate (%)', 
+                y='push_title', 
+                color='channel', 
+                orientation='h',
+                title="Top 10 Campaigns by Delivered-to-Click Rate (%)",
+                hover_data={'delivered_count':':,.0f', 'clicks':':,.0f', 'Rate (%)':':.2f%'},
+                labels={'push_title': 'Campaign Name', 'delivered_count': 'Delivered'}
+            )
+            fig_top_camps.update_layout(height=360, margin=dict(l=20, r=20, t=40, b=20))
+            st.plotly_chart(fig_top_camps, use_container_width=True)
+
+            # Full-Width Actionable Matrix
+            st.markdown("**Campaign Performance Matrix (Full View)**")
+            st.dataframe(
+                camp_matrix.sort_values('delivered_count', ascending=False).rename(
+                    columns={'push_title':'Campaign', 'channel':'Channel', 'delivered_count':'Delivered', 'clicks':'Clicks'}
+                ),
+                column_config={
+                    "Campaign": st.column_config.TextColumn("Campaign", width="large"),
+                    "Channel": st.column_config.TextColumn("Channel", width="small"),
+                    "Delivered": st.column_config.NumberColumn("Delivered", format="%d"),
+                    "Clicks": st.column_config.NumberColumn("Clicks", format="%d"),
+                    "Rate (%)": st.column_config.NumberColumn("Delivered-to-Click Rate", format="%.2f%%")
+                },
+                use_container_width=True, 
+                hide_index=True
+            )
 
             # Channel Funnel
             st.markdown("---")
@@ -413,10 +442,8 @@ try:
         or_col1, or_col2 = st.columns([2, 1])
         with or_col1:
             st.markdown("**1. Unified Marketing ROI Trend**")
-            t_ia = gov_inapp.groupby('pt')['show_pv'].sum().reset_index().rename(columns={'pt':'Date', 'show_pv':'Value'})
-            t_ia['Channel'] = 'In-App'
-            t_pr = gov_promo.groupby('date')['redemption_count'].sum().reset_index().rename(columns={'date':'Date', 'redemption_count':'Value'})
-            t_pr['Channel'] = 'Promo'
+            t_ia = gov_inapp.groupby('pt')['show_pv'].sum().reset_index().rename(columns={'pt':'Date', 'show_pv':'Value'}); t_ia['Channel'] = 'In-App'
+            t_pr = gov_promo.groupby('date')['redemption_count'].sum().reset_index().rename(columns={'date':'Date', 'redemption_count':'Value'}); t_pr['Channel'] = 'Promo'
             t_co = base_comm.groupby('date')['sends'].sum().reset_index().rename(columns={'date':'Date', 'sends':'Value'}) if not base_comm.empty else pd.DataFrame()
             if not t_co.empty:
                 t_co['Channel'] = 'Comm'
