@@ -11,7 +11,6 @@ import plotly.graph_objects as go
 # ==========================================
 st.set_page_config(page_title="Performance Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# Initialize Session States
 if 'lang' not in st.session_state: st.session_state.lang = "English"
 if 'font_size' not in st.session_state: st.session_state.font_size = "Medium"
 if 'theme' not in st.session_state: st.session_state.theme = "Light"
@@ -28,7 +27,6 @@ if 'chart_layout' not in st.session_state:
         "Communications": ["Trend Timeline", "Distribution Share", "Efficiency Comparison", "4-Quadrant Scatter", "Activity Heatmap"]
     }
 
-# Translation Dictionary
 TRANSLATIONS = {
     "English": {"home": "Home", "dash": "Dashboards", "set": "Settings", "search": "Quick search", "edit": "✏️ Edit", "done": "✔️ Done Editing", "welcome": "Welcome to Workspace"},
     "Chinese": {"home": "首頁", "dash": "儀表板", "set": "設定", "search": "快速搜尋", "edit": "✏️ 編輯", "done": "✔️ 完成編輯", "welcome": "歡迎來到工作區"},
@@ -36,7 +34,6 @@ TRANSLATIONS = {
 }
 t = TRANSLATIONS.get(st.session_state.lang, TRANSLATIONS["English"])
 
-# Dynamic CSS Theme Engine
 FONT_MAP = {"Small": "12px", "Medium": "16px", "Large": "20px"}
 fs = FONT_MAP.get(st.session_state.font_size, "16px")
 
@@ -49,12 +46,10 @@ border_col = "#333333" if is_dark else "#e0e0e0"
 
 st.markdown(f"""
     <style>
-    /* Global Font and Theme Colors */
     html, body, [class*="css"] {{ font-size: {fs} !important; color: {text_col} !important; }}
     .stApp {{ background-color: {bg_color}; }}
     h1, h2, h3, h4, h5, h6, p, div {{ color: {text_col}; }}
     
-    /* Metrics Cards */
     [data-testid="stMetric"] {{
         background-color: {card_bg}; border: 1px solid {border_col};
         border-radius: 8px; padding: 15px; box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.05);
@@ -62,7 +57,6 @@ st.markdown(f"""
     [data-testid="stMetricLabel"] {{ color: {subtext_col} !important; font-weight: 500; }}
     [data-testid="stMetricValue"] {{ font-weight: 700; color: {text_col} !important; }}
     
-    /* Strict Business Blue Buttons with Pure White Text */
     button[data-testid="baseButton-secondary"], button[data-testid="baseButton-primary"] {{
         background-color: #0056b3 !important;
         color: #ffffff !important;
@@ -78,15 +72,12 @@ st.markdown(f"""
         color: #ffffff !important;
     }}
     
-    /* MultiSelect Tags (Force Blue instead of Red) */
     .stMultiSelect div[data-baseweb="tag"] {{ background-color: #0056b3 !important; color: white !important; border-radius: 4px; }}
     .stMultiSelect div[data-baseweb="tag"] span {{ color: white !important; font-weight: 500 !important; }}
     .stMultiSelect div[data-baseweb="tag"] svg {{ fill: white !important; }}
     
-    /* Sidebar styling */
     [data-testid="stSidebar"] {{ background-color: {card_bg}; border-right: 1px solid {border_col}; }}
     
-    /* Floating AI Agent Popover */
     div[data-testid="stPopover"] {{
         position: fixed !important;
         bottom: 30px !important;
@@ -110,9 +101,6 @@ st.markdown(f"""
     </style>
 """, unsafe_allow_html=True)
 
-# ==========================================
-# DYNAMIC INSIGHTS GENERATOR
-# ==========================================
 @st.dialog("📊 Detailed Data Insights & Analysis")
 def show_insight(chart_name, view, ia_df, pr_df, co_df):
     st.markdown(f"### Insights for: {chart_name}")
@@ -125,60 +113,60 @@ def show_insight(chart_name, view, ia_df, pr_df, co_df):
                 pr_vol = pr_df['redemption_count'].sum()
                 co_vol = co_df['delivered_count'].sum() if not co_df.empty else 0
                 st.write(f"**Data Summary**: Across all dates selected, In-App generated **{ia_vol:,.0f}** impressions, Promos saw **{pr_vol:,.0f}** redemptions, and Communications delivered **{co_vol:,.0f}** messages.")
-                st.write("📈 **Key Takeaway**: Look for synchronised peaks across lines. If Promo spikes when In-App spikes, your cross-channel synergy is working.")
+                st.write("📈 **Key Takeaway**: Synchronised peaks indicate cohesive multi-channel execution.")
             elif view == "In-App Ads":
                 peak_day = ia_df.groupby('pt')['show_pv'].sum().idxmax().strftime('%Y-%m-%d')
                 peak_vol = ia_df.groupby('pt')['show_pv'].sum().max()
-                st.write(f"**Data Summary**: The highest exposure day was **{peak_day}** with **{peak_vol:,.0f}** views.")
-                st.write("⚠️ **Attention**: Ensure your budget didn't cap out prematurely on peak days. Check if CTR matches the exposure trend.")
+                st.write(f"**Data Summary**: Highest exposure occurred on **{peak_day}** with **{peak_vol:,.0f}** impressions.")
+                st.write("⚠️ **Attention**: Check whether daily CTR remained stable during high volume spikes.")
             elif view == "Promo Codes":
                 peak_day = pr_df.groupby('date')['usage_count'].sum().idxmax().strftime('%Y-%m-%d')
                 st.write(f"**Data Summary**: Actual promo usage peaked on **{peak_day}**.")
-                st.write("📈 **Key Takeaway**: A growing gap between redemptions and usage lines indicates users are saving codes but not converting.")
+                st.write("📈 **Key Takeaway**: Monitor gaps between redemptions and usage to measure drop-off.")
             elif view == "Communications":
                 peak_day = co_df.groupby('date')['clicks'].sum().idxmax().strftime('%Y-%m-%d')
-                st.write(f"**Data Summary**: Clicks peaked on **{peak_day}**.")
-                st.write("⚠️ **Attention**: Flatlines in delivery indicate disabled campaigns or scheduling errors.")
+                st.write(f"**Data Summary**: Communication click engagement peaked on **{peak_day}**.")
+                st.write("⚠️ **Attention**: Ensure consistent delivery schedules across reporting windows.")
                 
-        elif chart_type == "Distribution Share":
+        elif chart_name == "Distribution Share":
             if view == "In-App Ads":
                 top_city = ia_df.groupby('city_name')['show_pv'].sum().idxmax()
                 top_pct = (ia_df.groupby('city_name')['show_pv'].sum().max() / ia_df['show_pv'].sum()) * 100
-                st.write(f"**Data Summary**: **{top_city}** dominates with **{top_pct:.1f}%** of total ad delivery.")
-                st.write("💡 **Action**: If regional targeting is meant to be equal, your bidding strategy in other cities is underperforming.")
+                st.write(f"**Data Summary**: **{top_city}** accounts for **{top_pct:.1f}%** of total delivery.")
+                st.write("💡 **Action**: Evaluate regional inventory targets against delivery share.")
             elif view == "Promo Codes":
                 top_city = pr_df.groupby('city_name')['usage_count'].sum().idxmax()
-                st.write(f"**Data Summary**: **{top_city}** has the highest promo conversion volume.")
-                st.write("💡 **Action**: Consider running city-specific campaigns for the lowest performing slices to boost market share.")
+                st.write(f"**Data Summary**: **{top_city}** leads promotional usage.")
+                st.write("💡 **Action**: Rebalance promotional allocations across underperforming markets.")
             else:
-                st.write("**Data Summary**: Identifies the primary driver of your traffic.")
-                st.write("💡 **Action**: Ensure your budget allocation matches this distribution slice.")
+                st.write("**Data Summary**: Visualizes primary traffic and interaction sources.")
+                st.write("💡 **Action**: Align cross-channel investments with high-converting segments.")
                 
-        elif chart_type == "Efficiency Comparison":
-            st.write("**Data Summary**: Compares the conversion rates directly.")
-            st.write("⚠️ **Attention**: High-volume bars with low efficiency (<1%) mean you are paying for junk reach. Pause the lowest performing bar and reallocate.")
+        elif chart_name == "Efficiency Comparison":
+            st.write("**Data Summary**: Direct comparison of conversion and engagement rates.")
+            st.write("⚠️ **Attention**: Low-efficiency channels with large exposure require targeted copy review.")
             
-        elif chart_type == "4-Quadrant Scatter":
-            st.write("**Data Summary**: Plots Volume (X) vs Efficiency (Y).")
-            st.write("🎯 **Stars (Top-Right)**: High volume, high rate. Scale these up.\n\n📈 **Potential (Top-Left)**: Low volume, high rate. Increase their budget caps.\n\n🛑 **Dogs (Bottom-Right)**: High volume, low rate. Pause these immediately to save ROI.")
+        elif chart_name == "4-Quadrant Scatter":
+            st.write("**Data Summary**: Evaluates Volume (X) vs Efficiency (Y).")
+            st.write("🎯 **Stars (Top-Right)**: High volume, high rate.\n\n📈 **Potential (Top-Left)**: Low volume, high rate.\n\n🛑 **Dogs (Bottom-Right)**: High volume, low rate.")
             
-        elif chart_type == "Activity Heatmap":
-            st.write("**Data Summary**: Shows interaction density by day of the week.")
-            st.write("💡 **Action**: Locate the darkest cells. These are your golden hours. Shift automated campaign launches to match these specific days.")
+        elif chart_name == "Activity Heatmap":
+            st.write("**Data Summary**: Density breakdown by day of the week.")
+            st.write("💡 **Action**: Focus campaign releases on the highest activity clusters.")
             
-        elif chart_type == "Volume Treemap":
-            st.write("**Data Summary**: Visualizes scale hierarchy.")
-            st.write("⚠️ **Attention**: Ensure that your strategically important campaigns occupy the largest boxes. If a minor campaign is massive, it's eating your budget.")
+        elif chart_name == "Volume Treemap":
+            st.write("**Data Summary**: Hierarchical scale representation.")
+            st.write("⚠️ **Attention**: Ensure primary strategic campaigns correspond to the largest allocations.")
             
-        elif chart_type == "Conversion Funnel":
-            st.write("**Data Summary**: Step-by-step user journey tracking.")
-            st.write("🚨 **Watch out for**: A drop-off greater than 75% between any two stages. This indicates a severe UX bottleneck or broken tracking link.")
+        elif chart_name == "Conversion Funnel":
+            st.write("**Data Summary**: User step-by-step retention.")
+            st.write("🚨 **Watch out for**: Drop-offs greater than 75% between adjacent steps.")
         
         else:
-            st.write("General analysis: Monitor outliers and correlate with your campaign launch dates.")
+            st.write("General analysis generated from active filters.")
             
-    except Exception as e:
-        st.write("Insufficient data for detailed insights in this specific view.")
+    except Exception:
+        st.write("Insights unavailable for the selected view configuration.")
         
     st.markdown("---")
     if st.button("Close Insights"):
@@ -243,7 +231,6 @@ try:
     # ==========================================
     # 4. PAGE ROUTING
     # ==========================================
-    
     if nav_selection.endswith(t['set']):
         st.title(t["set"])
         st.markdown("---")
@@ -267,7 +254,6 @@ try:
         st.info("Home view is currently being set up. Please navigate to Dashboards.")
 
     elif nav_selection.endswith(t['dash']):
-        # TOP TITLE (Simplified)
         col_title, col_edit = st.columns([8, 1])
         col_title.caption(f"Home / Dashboard")
         col_title.title("Dashboard")
@@ -307,7 +293,6 @@ try:
 
         st.markdown("<br>", unsafe_allow_html=True)
         
-        # EDIT MODE CUSTOMIZATION
         if st.session_state.edit_mode:
             st.warning("✏️ Edit Mode: Add, remove, or reorder the diagrams below.")
             st.session_state.chart_layout[channel_view] = st.multiselect(
@@ -372,7 +357,6 @@ try:
             st.plotly_chart(fig, use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
 
-        # RENDER DYNAMIC CHARTS
         for chart_type in st.session_state.chart_layout[channel_view]:
             if chart_type == "Trend Timeline":
                 if channel_view == "Overview (All)":
@@ -530,14 +514,11 @@ try:
             r2 = pr_data[['date', 'city_name', 'promocode', 'redemption_count', 'url']].rename(columns={'date':'Date', 'city_name':'City', 'promocode':'Code/Campaign', 'redemption_count':'Volume', 'url':'URL'}); r2['Platform'] = 'Promo'
             raw = pd.concat([r1, r2], ignore_index=True)
         elif channel_view == "In-App Ads":
-            raw = ia_data[['pt', 'city_name', 'campaign_name', 'show_pv', 'click_pv', 'data_quality_status', 'url']].rename(columns={'pt':'Date', 'city_name':'City', 'campaign_name':'Code/Campaign', 'show_pv':'Volume', 'click_pv':'Interactions', 'data_quality_status':'Status', 'url':'URL'})
-            raw['Platform'] = 'In-App'
+            raw = ia_data[['pt', 'city_name', 'campaign_name', 'show_pv', 'url']].rename(columns={'pt':'Date', 'city_name':'City', 'campaign_name':'Code/Campaign', 'show_pv':'Volume', 'url':'URL'}); raw['Platform'] = 'In-App'
         elif channel_view == "Promo Codes":
-            raw = pr_data[['date', 'city_name', 'promocode', 'redemption_count', 'usage_count', 'url']].rename(columns={'date':'Date', 'city_name':'City', 'promocode':'Code/Campaign', 'redemption_count':'Volume', 'usage_count':'Interactions', 'url':'URL'})
-            raw['Platform'] = 'Promo'
+            raw = pr_data[['date', 'city_name', 'promocode', 'redemption_count', 'url']].rename(columns={'date':'Date', 'city_name':'City', 'promocode':'Code/Campaign', 'redemption_count':'Volume', 'url':'URL'}); raw['Platform'] = 'Promo'
         elif channel_view == "Communications":
-            raw = co_data[['date', 'target_markets', 'push_title', 'delivered_count', 'clicks', 'url']].rename(columns={'date':'Date', 'target_markets':'City', 'push_title':'Code/Campaign', 'delivered_count':'Volume', 'clicks':'Interactions', 'url':'URL'})
-            raw['Platform'] = 'Comm'
+            raw = co_data[['date', 'target_markets', 'push_title', 'delivered_count', 'url']].rename(columns={'date':'Date', 'target_markets':'City', 'push_title':'Code/Campaign', 'delivered_count':'Volume', 'url':'URL'}); raw['Platform'] = 'Comm'
 
         st.dataframe(
             raw,
@@ -545,27 +526,26 @@ try:
             use_container_width=True, hide_index=True
         )
 
-# ==========================================
-# 5. FLOATING AI AGENT CHAT UI
-# ==========================================
-with st.popover("💬 Ask AI Agent"):
-    st.markdown("### 🤖 Marketing AI Agent")
-    st.caption("Ask me to analyze trends, find anomalies, or summarize campaign data.")
-    
-    chat_container = st.container(height=300)
-    for msg in st.session_state.chat_history:
-        chat_container.chat_message(msg["role"]).write(msg["content"])
+    # ==========================================
+    # 5. FLOATING AI AGENT CHAT UI (Inside Try Block)
+    # ==========================================
+    with st.popover("💬 Ask AI Agent"):
+        st.markdown("### 🤖 Marketing AI Agent")
+        st.caption("Ask me to analyze trends, identify anomalies, or summarize campaign data.")
         
-    with st.form("chat_form", clear_on_submit=True):
-        c1, c2 = st.columns([4, 1])
-        user_msg = c1.text_input("Type your question...", label_visibility="collapsed")
-        submit = c2.form_submit_button("Send")
-        if submit and user_msg:
-            st.session_state.chat_history.append({"role": "user", "content": user_msg})
-            # Dummy AI Response Logic
-            bot_reply = f"Analyzing your request regarding '{user_msg}'... Based on the current view, overall performance is steady. Please check the 4-Quadrant matrix above to identify specific campaigns that require budget reallocation."
-            st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
-            st.rerun()
+        chat_container = st.container(height=300)
+        for msg in st.session_state.chat_history:
+            chat_container.chat_message(msg["role"]).write(msg["content"])
+            
+        with st.form("chat_form", clear_on_submit=True):
+            c1, c2 = st.columns([4, 1])
+            user_msg = c1.text_input("Type your question...", label_visibility="collapsed")
+            submit = c2.form_submit_button("Send")
+            if submit and user_msg:
+                st.session_state.chat_history.append({"role": "user", "content": user_msg})
+                bot_reply = f"Analyzing your query: '{user_msg}'... Based on active filters, overall metrics are stable. Check the 4-Quadrant Scatter matrix to identify priority reallocations."
+                st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
+                st.rerun()
 
 except Exception as err:
     st.error(f"Error rendering dashboard: {err}")
