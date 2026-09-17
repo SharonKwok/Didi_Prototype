@@ -28,9 +28,9 @@ if 'chart_layout' not in st.session_state:
     }
 
 TRANSLATIONS = {
-    "English": {"home": "Home", "dash": "Dashboards", "set": "Settings", "search": "Quick search", "edit": "✏️ Edit", "done": "✔️ Done Editing", "welcome": "Welcome to Workspace"},
-    "Chinese": {"home": "首頁", "dash": "儀表板", "set": "設定", "search": "快速搜尋", "edit": "✏️ 編輯", "done": "✔️ 完成編輯", "welcome": "歡迎來到工作區"},
-    "Spanish": {"home": "Inicio", "dash": "Tableros", "set": "Ajustes", "search": "Búsqueda", "edit": "✏️ Editar", "done": "✔️ Listo", "welcome": "Bienvenido al Espacio"}
+    "English": {"home": "Top Dashboard", "dash": "Dashboards", "set": "Settings", "search": "Quick search", "edit": "✏️ Edit", "done": "✔️ Done Editing", "welcome": "Welcome to Workspace"},
+    "Chinese": {"home": "置頂總覽", "dash": "儀表板", "set": "設定", "search": "快速搜尋", "edit": "✏️ 編輯", "done": "✔️ 完成編輯", "welcome": "歡迎來到工作區"},
+    "Spanish": {"home": "Tablero Superior", "dash": "Tableros", "set": "Ajustes", "search": "Búsqueda", "edit": "✏️ Editar", "done": "✔️ Listo", "welcome": "Bienvenido al Espacio"}
 }
 t = TRANSLATIONS.get(st.session_state.lang, TRANSLATIONS["English"])
 
@@ -46,12 +46,10 @@ border_col = "#333333" if is_dark else "#e0e0e0"
 
 st.markdown(f"""
     <style>
-    /* Global Font and Theme Colors */
     html, body, [class*="css"] {{ font-size: {fs} !important; color: {text_col} !important; }}
     .stApp {{ background-color: {bg_color}; }}
     h1, h2, h3, h4, h5, h6, p, div {{ color: {text_col}; }}
     
-    /* Metrics Cards */
     [data-testid="stMetric"] {{
         background-color: {card_bg}; border: 1px solid {border_col};
         border-radius: 8px; padding: 15px; box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.05);
@@ -59,7 +57,6 @@ st.markdown(f"""
     [data-testid="stMetricLabel"] {{ color: {subtext_col} !important; font-weight: 500; }}
     [data-testid="stMetricValue"] {{ font-weight: 700; color: {text_col} !important; }}
     
-    /* Strict Business Blue Buttons */
     button[data-testid="baseButton-secondary"], button[data-testid="baseButton-primary"] {{
         background-color: #0056b3 !important;
         color: #ffffff !important;
@@ -75,15 +72,15 @@ st.markdown(f"""
         color: #ffffff !important;
     }}
     
-    /* MultiSelect Tags (Force Blue) */
+    /* Strict Business Blue Tags */
     .stMultiSelect div[data-baseweb="tag"] {{ background-color: #0056b3 !important; color: white !important; border-radius: 4px; }}
     .stMultiSelect div[data-baseweb="tag"] span {{ color: white !important; font-weight: 500 !important; }}
     .stMultiSelect div[data-baseweb="tag"] svg {{ fill: white !important; }}
     
-    /* Sidebar styling */
-    [data-testid="stSidebar"] {{ background-color: {card_bg}; border-right: 1px solid {border_col}; }}
+    /* Radio Buttons Blue Accent */
+    div[data-testid="stRadio"] label span {{ color: {text_col} !important; font-weight: 500; }}
     
-    /* Fix Popover internal background for dark mode */
+    [data-testid="stSidebar"] {{ background-color: {card_bg}; border-right: 1px solid {border_col}; }}
     div[data-testid="stPopoverBody"] {{ background-color: {card_bg}; border: 1px solid {border_col}; }}
     </style>
 """, unsafe_allow_html=True)
@@ -148,7 +145,7 @@ def show_insight(chart_name, view, ia_df, pr_df, co_df):
         st.rerun()
 
 # ==========================================
-# 2. Data Loading
+# 2. Data Loading & Categorization
 # ==========================================
 @st.cache_data
 def load_data():
@@ -158,16 +155,21 @@ def load_data():
     comm_file = os.path.join(base_dir, "Communication.xlsx")
     mock_url = "https://web.didiglobal.com/au/store/"
     
+    # RoANZ is explicitly categorized under New Zealand per business requirement
+    nz_regions = ['Auckland', 'Wellington', 'Christchurch', 'Christchurch City', 'RoANZ']
+    
     df_inapp = pd.read_excel(inapp_file, sheet_name="Raw Data")
     df_inapp['pt'] = pd.to_datetime(df_inapp['pt'])
     df_inapp['day_of_week'] = df_inapp['pt'].dt.day_name()
     if 'campaign_ver' not in df_inapp.columns: df_inapp['campaign_ver'] = 'All'
     df_inapp['url'] = mock_url
+    df_inapp['country'] = df_inapp['city_name'].apply(lambda x: 'New Zealand' if x in nz_regions else 'Australia')
     
     df_promo = pd.read_excel(promo_file, sheet_name="Reporting Data")
     df_promo['date'] = pd.to_datetime(df_promo['date'])
     df_promo['day_of_week'] = df_promo['date'].dt.day_name()
     df_promo['url'] = mock_url
+    df_promo['country'] = df_promo['city_name'].apply(lambda x: 'New Zealand' if x in nz_regions else 'Australia')
 
     if os.path.exists(comm_file):
         try:
@@ -194,22 +196,30 @@ def load_data():
 try:
     df_inapp, df_promo, df_comm = load_data()
     
-    # Establish Country Mapping for Cities
-    nz_cities = ['Auckland', 'Wellington', 'Christchurch']
-    df_inapp['country'] = df_inapp['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
-    df_promo['country'] = df_promo['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
-    
+    # Establish complete City to Country Mapping
     city_country_map = {}
     for _, row in df_inapp[['city_name', 'country']].dropna().iterrows(): city_country_map[row['city_name']] = row['country']
     for _, row in df_promo[['city_name', 'country']].dropna().iterrows(): city_country_map[row['city_name']] = row['country']
-    if 'RoANZ' not in city_country_map: city_country_map['RoANZ'] = 'Australia'
-    
+    city_country_map['RoANZ'] = 'New Zealand' # Explicit assignment
+
     # ==========================================
-    # 3. SIDEBAR NAVIGATION
+    # 3. SIDEBAR NAVIGATION (With Quick Jump Links)
     # ==========================================
     st.sidebar.text_input(t["search"], placeholder="🔍 Search...")
     st.sidebar.markdown("---")
-    nav_selection = st.sidebar.radio("NAVIGATION", [f"🏠 {t['home']}", f"📈 {t['dash']}", f"⚙️ {t['set']}"], index=1)
+    nav_selection = st.sidebar.radio(
+        "NAVIGATION",
+        [f"🏠 {t['home']}", f"⚙️ {t['set']}"],
+        index=0
+    )
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### ⚡ Quick Navigation")
+    st.sidebar.markdown("""
+        * [📈 Jump to Diagrams](#analytics-diagrams)
+        * [🏆 Jump to Leaderboard](#performance-leaderboard)
+        * [📋 Jump to Raw Data](#raw-data-actionable-view)
+    """)
 
     # ==========================================
     # 4. PAGE ROUTING
@@ -232,18 +242,14 @@ try:
             st.session_state.theme = new_theme
             st.rerun()
 
-    elif nav_selection.endswith(t['home']):
-        st.title(t["welcome"])
-        st.info("Home view is currently being set up. Please navigate to Dashboards.")
-
-    elif nav_selection.endswith(t['dash']):
+    else:
         # TOP TITLE WITH AGENT & EDIT BUTTONS
         col_title, col_agent, col_edit = st.columns([6.5, 1.5, 1])
         with col_title:
-            st.caption(f"Home / Dashboard")
+            st.caption("Home / Dashboard")
             st.title("Dashboard")
         with col_agent:
-            st.write("") # Padding
+            st.write("")
             with st.popover("💬 Ask AI Agent"):
                 st.markdown("### 🤖 Marketing AI Agent")
                 st.caption("Ask me to analyze trends or summarize campaign data.")
@@ -253,41 +259,45 @@ try:
                 user_msg = st.text_input("Type your question...", key="chat_input")
                 if st.button("Send", key="chat_send") and user_msg:
                     st.session_state.chat_history.append({"role": "user", "content": user_msg})
-                    st.session_state.chat_history.append({"role": "assistant", "content": f"Analyzing '{user_msg}'... Performance is steady. Check the 4-Quadrant matrix below for specifics."})
+                    st.session_state.chat_history.append({"role": "assistant", "content": f"Analyzing '{user_msg}'... Metrics are healthy. Refer to the 4-Quadrant matrix below."})
                     st.rerun()
         with col_edit:
-            st.write("") # Padding
+            st.write("")
             if st.button(t['done'] if st.session_state.edit_mode else t['edit']):
                 st.session_state.edit_mode = not st.session_state.edit_mode
                 st.rerun()
 
         # ------------------------------------------
-        # 5-LEVEL CASCADING FILTERS
+        # 5-LEVEL RESTRUCTURED FILTERS
         # ------------------------------------------
         st.markdown("##### Filters")
         
-        # Level 1: Market & Level 2: City
-        f_market, f_city = st.columns([1, 3])
-        selected_market = f_market.radio("Market", ["All", "Australia", "New Zealand"], horizontal=True)
+        # 1. Market Selection (Horizontal Row)
+        selected_market = st.radio("Market", ["All", "Australia", "New Zealand"], horizontal=True)
         
+        # 2. City Selection (Dedicated Row Below Market)
         if selected_market == "All":
             filtered_cities = sorted(list(city_country_map.keys()))
         else:
             filtered_cities = sorted([city for city, country in city_country_map.items() if country == selected_market])
             
-        selected_cities = f_city.multiselect("City", filtered_cities, default=filtered_cities)
+        selected_cities = st.multiselect("City", filtered_cities, default=filtered_cities)
         
-        # Level 3: Platform
-        channel_view = st.selectbox("Dashboard View (Platform)", ["Overview (All)", "In-App Ads", "Promo Codes", "Communications"])
+        # 3. Platform Selection (Renamed to 'Platform' & Radio Circle Format)
+        channel_view = st.radio(
+            "Platform", 
+            ["Overview (All)", "In-App Ads", "Promo Codes", "Communications"], 
+            horizontal=True
+        )
         
-        # Level 4: Reporting Period & Custom Date
+        # 4. Reporting Period & Custom Date Range
         f_per, f_date = st.columns(2)
         rep_period = f_per.selectbox("Reporting Period", ["All", "Daily", "Weekly", "Monthly", "Seasonly", "Yearly"])
         min_d, max_d = df_inapp['pt'].min().date(), df_inapp['pt'].max().date()
         date_range = f_date.date_input("Custom Date Range", [min_d, max_d])
         start_date, end_date = date_range if isinstance(date_range, tuple) and len(date_range) == 2 else (min_d, max_d)
         
-        # Level 5: Keyword & Amount
+        # 5. Keyword Search & Minimum Amount
         f_key, f_amt = st.columns(2)
         name_include = f_key.text_input("Keyword Search", placeholder="Filter by Campaign Name or Code...")
         min_amount = f_amt.number_input("Minimum Exposure / Volume", min_value=0, value=0, step=100)
@@ -357,8 +367,9 @@ try:
             k4.metric("Delivered-to-Click Rate", f"{(tc/td*100):.2f}%" if td else "0%")
             k5.metric("Total Sends", f"{co_data['sends'].sum():,.0f}")
 
+        # 2. RENDER DYNAMIC CHARTS (With Anchor)
         st.markdown("---")
-        st.markdown(f"##### Analytics Diagrams")
+        st.markdown("<h5 id='analytics-diagrams'>Analytics Diagrams</h5>", unsafe_allow_html=True)
         
         def render_chart_with_insight(chart_name, fig):
             col_ch, col_btn = st.columns([15, 1])
@@ -375,7 +386,6 @@ try:
             st.plotly_chart(fig, use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
 
-        # RENDER DYNAMIC CHARTS
         for chart_type in st.session_state.chart_layout[channel_view]:
             if chart_type == "Trend Timeline":
                 if channel_view == "Overview (All)":
@@ -487,9 +497,9 @@ try:
                     fig.update_layout(title="Communications Master Funnel")
                 render_chart_with_insight(chart_type, fig)
 
-        # 3. INTERACTIVE TOP PERFORMANCE TABLE & DYNAMIC DIAGRAM
+        # 3. INTERACTIVE TOP PERFORMANCE TABLE & DYNAMIC DIAGRAM (With Anchor)
         st.markdown("---")
-        st.markdown("##### 🏆 Interactive Performance Leaderboard")
+        st.markdown("<h5 id='performance-leaderboard'>🏆 Interactive Performance Leaderboard</h5>", unsafe_allow_html=True)
         
         if channel_view == "Overview (All)":
             m1 = ia_data.groupby('campaign_name').agg({'show_pv':'sum', 'click_pv':'sum'}).reset_index().rename(columns={'campaign_name':'Code/Campaign', 'show_pv':'Volume', 'click_pv':'Interact'}); m1['Platform'] = 'In-App'
@@ -524,9 +534,9 @@ try:
             else: fig_leader.update_layout(template="plotly_white", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_leader, use_container_width=True)
 
-        # 4. RAW DATA VIEW (Actionable)
+        # 4. RAW DATA VIEW (With Anchor)
         st.markdown("---")
-        st.markdown("##### 📋 Raw Data (Actionable View)")
+        st.markdown("<h5 id='raw-data-actionable-view'>📋 Raw Data (Actionable View)</h5>", unsafe_allow_html=True)
         
         if channel_view == "Overview (All)":
             r1 = ia_data[['pt', 'city_name', 'campaign_name', 'show_pv', 'url']].rename(columns={'pt':'Date', 'city_name':'City', 'campaign_name':'Code/Campaign', 'show_pv':'Volume', 'url':'URL'}); r1['Platform'] = 'In-App'
@@ -541,14 +551,7 @@ try:
 
         st.dataframe(
             raw,
-            column_config={
-                "Date": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"),
-                "Platform": "Platform",
-                "City": "City / Market",
-                "Code/Campaign": "Campaign Name / Code",
-                "Volume": "Total Volume",
-                "URL": st.column_config.LinkColumn("Redirect URL", display_text="🔗 Link")
-            },
+            column_config={"Date": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"), "Platform": "Platform", "City": "City / Market", "Code/Campaign": "Campaign Name / Code", "Volume": "Total Volume", "URL": st.column_config.LinkColumn("Redirect URL", display_text="🔗 Link")},
             use_container_width=True, hide_index=True
         )
 
