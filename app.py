@@ -46,10 +46,12 @@ border_col = "#333333" if is_dark else "#e0e0e0"
 
 st.markdown(f"""
     <style>
+    /* Global Font and Theme Colors */
     html, body, [class*="css"] {{ font-size: {fs} !important; color: {text_col} !important; }}
     .stApp {{ background-color: {bg_color}; }}
     h1, h2, h3, h4, h5, h6, p, div {{ color: {text_col}; }}
     
+    /* Metrics Cards */
     [data-testid="stMetric"] {{
         background-color: {card_bg}; border: 1px solid {border_col};
         border-radius: 8px; padding: 15px; box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.05);
@@ -57,6 +59,7 @@ st.markdown(f"""
     [data-testid="stMetricLabel"] {{ color: {subtext_col} !important; font-weight: 500; }}
     [data-testid="stMetricValue"] {{ font-weight: 700; color: {text_col} !important; }}
     
+    /* Strict Business Blue Buttons */
     button[data-testid="baseButton-secondary"], button[data-testid="baseButton-primary"] {{
         background-color: #0056b3 !important;
         color: #ffffff !important;
@@ -72,32 +75,16 @@ st.markdown(f"""
         color: #ffffff !important;
     }}
     
+    /* MultiSelect Tags (Force Blue) */
     .stMultiSelect div[data-baseweb="tag"] {{ background-color: #0056b3 !important; color: white !important; border-radius: 4px; }}
     .stMultiSelect div[data-baseweb="tag"] span {{ color: white !important; font-weight: 500 !important; }}
     .stMultiSelect div[data-baseweb="tag"] svg {{ fill: white !important; }}
     
+    /* Sidebar styling */
     [data-testid="stSidebar"] {{ background-color: {card_bg}; border-right: 1px solid {border_col}; }}
     
-    div[data-testid="stPopover"] {{
-        position: fixed !important;
-        bottom: 30px !important;
-        right: 30px !important;
-        z-index: 999999 !important;
-    }}
-    div[data-testid="stPopover"] > button {{
-        background-color: #0056b3 !important;
-        color: #ffffff !important;
-        border-radius: 50px !important;
-        padding: 15px 30px !important;
-        font-weight: bold !important;
-        box-shadow: 0 6px 16px rgba(0,0,0,0.3) !important;
-        border: none !important;
-    }}
-    div[data-testid="stPopover"] > button p {{
-        color: #ffffff !important;
-        font-size: 16px !important;
-        margin: 0 !important;
-    }}
+    /* Fix Popover internal background for dark mode */
+    div[data-testid="stPopoverBody"] {{ background-color: {card_bg}; border: 1px solid {border_col}; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -105,19 +92,15 @@ st.markdown(f"""
 def show_insight(chart_name, view, ia_df, pr_df, co_df):
     st.markdown(f"### Insights for: {chart_name}")
     st.markdown("---")
-    
     try:
         if chart_name == "Trend Timeline":
             if view == "Overview (All)":
-                ia_vol = ia_df['show_pv'].sum()
-                pr_vol = pr_df['redemption_count'].sum()
-                co_vol = co_df['delivered_count'].sum() if not co_df.empty else 0
-                st.write(f"**Data Summary**: Across all dates selected, In-App generated **{ia_vol:,.0f}** impressions, Promos saw **{pr_vol:,.0f}** redemptions, and Communications delivered **{co_vol:,.0f}** messages.")
+                ia_vol = ia_df['show_pv'].sum(); pr_vol = pr_df['redemption_count'].sum(); co_vol = co_df['delivered_count'].sum() if not co_df.empty else 0
+                st.write(f"**Data Summary**: In-App: **{ia_vol:,.0f}** impressions | Promos: **{pr_vol:,.0f}** redemptions | Comm: **{co_vol:,.0f}** messages.")
                 st.write("📈 **Key Takeaway**: Synchronised peaks indicate cohesive multi-channel execution.")
             elif view == "In-App Ads":
                 peak_day = ia_df.groupby('pt')['show_pv'].sum().idxmax().strftime('%Y-%m-%d')
-                peak_vol = ia_df.groupby('pt')['show_pv'].sum().max()
-                st.write(f"**Data Summary**: Highest exposure occurred on **{peak_day}** with **{peak_vol:,.0f}** impressions.")
+                st.write(f"**Data Summary**: Highest exposure occurred on **{peak_day}**.")
                 st.write("⚠️ **Attention**: Check whether daily CTR remained stable during high volume spikes.")
             elif view == "Promo Codes":
                 peak_day = pr_df.groupby('date')['usage_count'].sum().idxmax().strftime('%Y-%m-%d')
@@ -127,7 +110,6 @@ def show_insight(chart_name, view, ia_df, pr_df, co_df):
                 peak_day = co_df.groupby('date')['clicks'].sum().idxmax().strftime('%Y-%m-%d')
                 st.write(f"**Data Summary**: Communication click engagement peaked on **{peak_day}**.")
                 st.write("⚠️ **Attention**: Ensure consistent delivery schedules across reporting windows.")
-                
         elif chart_name == "Distribution Share":
             if view == "In-App Ads":
                 top_city = ia_df.groupby('city_name')['show_pv'].sum().idxmax()
@@ -141,30 +123,23 @@ def show_insight(chart_name, view, ia_df, pr_df, co_df):
             else:
                 st.write("**Data Summary**: Visualizes primary traffic and interaction sources.")
                 st.write("💡 **Action**: Align cross-channel investments with high-converting segments.")
-                
         elif chart_name == "Efficiency Comparison":
             st.write("**Data Summary**: Direct comparison of conversion and engagement rates.")
             st.write("⚠️ **Attention**: Low-efficiency channels with large exposure require targeted copy review.")
-            
         elif chart_name == "4-Quadrant Scatter":
             st.write("**Data Summary**: Evaluates Volume (X) vs Efficiency (Y).")
             st.write("🎯 **Stars (Top-Right)**: High volume, high rate.\n\n📈 **Potential (Top-Left)**: Low volume, high rate.\n\n🛑 **Dogs (Bottom-Right)**: High volume, low rate.")
-            
         elif chart_name == "Activity Heatmap":
             st.write("**Data Summary**: Density breakdown by day of the week.")
             st.write("💡 **Action**: Focus campaign releases on the highest activity clusters.")
-            
         elif chart_name == "Volume Treemap":
             st.write("**Data Summary**: Hierarchical scale representation.")
             st.write("⚠️ **Attention**: Ensure primary strategic campaigns correspond to the largest allocations.")
-            
         elif chart_name == "Conversion Funnel":
             st.write("**Data Summary**: User step-by-step retention.")
             st.write("🚨 **Watch out for**: Drop-offs greater than 75% between adjacent steps.")
-        
         else:
             st.write("General analysis generated from active filters.")
-            
     except Exception:
         st.write("Insights unavailable for the selected view configuration.")
         
@@ -218,8 +193,16 @@ def load_data():
 
 try:
     df_inapp, df_promo, df_comm = load_data()
-    all_cities = set(df_inapp['city_name'].dropna().unique()) | set(df_promo['city_name'].dropna().unique())
-    available_cities = sorted(list(all_cities))
+    
+    # Establish Country Mapping for Cities
+    nz_cities = ['Auckland', 'Wellington', 'Christchurch']
+    df_inapp['country'] = df_inapp['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
+    df_promo['country'] = df_promo['city_name'].apply(lambda x: 'New Zealand' if x in nz_cities else 'Australia')
+    
+    city_country_map = {}
+    for _, row in df_inapp[['city_name', 'country']].dropna().iterrows(): city_country_map[row['city_name']] = row['country']
+    for _, row in df_promo[['city_name', 'country']].dropna().iterrows(): city_country_map[row['city_name']] = row['country']
+    if 'RoANZ' not in city_country_map: city_country_map['RoANZ'] = 'Australia'
     
     # ==========================================
     # 3. SIDEBAR NAVIGATION
@@ -254,28 +237,62 @@ try:
         st.info("Home view is currently being set up. Please navigate to Dashboards.")
 
     elif nav_selection.endswith(t['dash']):
-        col_title, col_edit = st.columns([8, 1])
-        col_title.caption(f"Home / Dashboard")
-        col_title.title("Dashboard")
-        
-        if col_edit.button(t['done'] if st.session_state.edit_mode else t['edit']):
-            st.session_state.edit_mode = not st.session_state.edit_mode
-            st.rerun()
+        # TOP TITLE WITH AGENT & EDIT BUTTONS
+        col_title, col_agent, col_edit = st.columns([6.5, 1.5, 1])
+        with col_title:
+            st.caption(f"Home / Dashboard")
+            st.title("Dashboard")
+        with col_agent:
+            st.write("") # Padding
+            with st.popover("💬 Ask AI Agent"):
+                st.markdown("### 🤖 Marketing AI Agent")
+                st.caption("Ask me to analyze trends or summarize campaign data.")
+                chat_container = st.container(height=250)
+                for msg in st.session_state.chat_history:
+                    chat_container.chat_message(msg["role"]).write(msg["content"])
+                user_msg = st.text_input("Type your question...", key="chat_input")
+                if st.button("Send", key="chat_send") and user_msg:
+                    st.session_state.chat_history.append({"role": "user", "content": user_msg})
+                    st.session_state.chat_history.append({"role": "assistant", "content": f"Analyzing '{user_msg}'... Performance is steady. Check the 4-Quadrant matrix below for specifics."})
+                    st.rerun()
+        with col_edit:
+            st.write("") # Padding
+            if st.button(t['done'] if st.session_state.edit_mode else t['edit']):
+                st.session_state.edit_mode = not st.session_state.edit_mode
+                st.rerun()
 
+        # ------------------------------------------
+        # 5-LEVEL CASCADING FILTERS
+        # ------------------------------------------
         st.markdown("##### Filters")
-        selected_cities = st.multiselect("City", available_cities, default=available_cities)
         
-        f_col1, f_col2, f_col3 = st.columns([1.5, 1.5, 1.5])
+        # Level 1: Market & Level 2: City
+        f_market, f_city = st.columns([1, 3])
+        selected_market = f_market.radio("Market", ["All", "Australia", "New Zealand"], horizontal=True)
+        
+        if selected_market == "All":
+            filtered_cities = sorted(list(city_country_map.keys()))
+        else:
+            filtered_cities = sorted([city for city, country in city_country_map.items() if country == selected_market])
+            
+        selected_cities = f_city.multiselect("City", filtered_cities, default=filtered_cities)
+        
+        # Level 3: Platform
+        channel_view = st.selectbox("Dashboard View (Platform)", ["Overview (All)", "In-App Ads", "Promo Codes", "Communications"])
+        
+        # Level 4: Reporting Period & Custom Date
+        f_per, f_date = st.columns(2)
+        rep_period = f_per.selectbox("Reporting Period", ["All", "Daily", "Weekly", "Monthly", "Seasonly", "Yearly"])
         min_d, max_d = df_inapp['pt'].min().date(), df_inapp['pt'].max().date()
-        date_range = f_col1.date_input("Date Range", [min_d, max_d])
+        date_range = f_date.date_input("Custom Date Range", [min_d, max_d])
         start_date, end_date = date_range if isinstance(date_range, tuple) and len(date_range) == 2 else (min_d, max_d)
         
-        channel_view = f_col2.selectbox("Dashboard View (Platform)", ["Overview (All)", "In-App Ads", "Promo Codes", "Communications"])
-        min_amount = f_col3.number_input("Minimum Exposure / Volume", min_value=0, value=0, step=100)
-        
-        name_include = st.text_input("Keyword Search", placeholder="Filter by Campaign Name or Code...")
+        # Level 5: Keyword & Amount
+        f_key, f_amt = st.columns(2)
+        name_include = f_key.text_input("Keyword Search", placeholder="Filter by Campaign Name or Code...")
+        min_amount = f_amt.number_input("Minimum Exposure / Volume", min_value=0, value=0, step=100)
 
-        # Base Data Filtering
+        # Base Data Filtering Application
         ia_data = df_inapp[(df_inapp['pt'] >= pd.to_datetime(start_date)) & (df_inapp['pt'] <= pd.to_datetime(end_date)) & (df_inapp['city_name'].isin(selected_cities)) & (df_inapp['show_pv'] >= min_amount)]
         ia_data = ia_data[ia_data['campaign_ver'].astype(str).str.lower() == 'all']
         if name_include: ia_data = ia_data[ia_data['campaign_name'].str.contains(name_include, case=False, na=False)]
@@ -293,6 +310,7 @@ try:
 
         st.markdown("<br>", unsafe_allow_html=True)
         
+        # EDIT MODE CUSTOMIZATION
         if st.session_state.edit_mode:
             st.warning("✏️ Edit Mode: Add, remove, or reorder the diagrams below.")
             st.session_state.chart_layout[channel_view] = st.multiselect(
@@ -357,6 +375,7 @@ try:
             st.plotly_chart(fig, use_container_width=True)
             st.markdown("<br>", unsafe_allow_html=True)
 
+        # RENDER DYNAMIC CHARTS
         for chart_type in st.session_state.chart_layout[channel_view]:
             if chart_type == "Trend Timeline":
                 if channel_view == "Overview (All)":
@@ -505,7 +524,7 @@ try:
             else: fig_leader.update_layout(template="plotly_white", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
             st.plotly_chart(fig_leader, use_container_width=True)
 
-        # 4. RAW DATA VIEW
+        # 4. RAW DATA VIEW (Actionable)
         st.markdown("---")
         st.markdown("##### 📋 Raw Data (Actionable View)")
         
@@ -522,30 +541,16 @@ try:
 
         st.dataframe(
             raw,
-            column_config={"Date": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"), "Platform": "Platform", "City": "City / Market", "Code/Campaign": "Campaign Name / Code", "Volume": "Total Volume", "URL": st.column_config.LinkColumn("Redirect URL", display_text="🔗 Link")},
+            column_config={
+                "Date": st.column_config.DatetimeColumn("Date", format="YYYY-MM-DD"),
+                "Platform": "Platform",
+                "City": "City / Market",
+                "Code/Campaign": "Campaign Name / Code",
+                "Volume": "Total Volume",
+                "URL": st.column_config.LinkColumn("Redirect URL", display_text="🔗 Link")
+            },
             use_container_width=True, hide_index=True
         )
-
-    # ==========================================
-    # 5. FLOATING AI AGENT CHAT UI (Inside Try Block)
-    # ==========================================
-    with st.popover("💬 Ask AI Agent"):
-        st.markdown("### 🤖 Marketing AI Agent")
-        st.caption("Ask me to analyze trends, identify anomalies, or summarize campaign data.")
-        
-        chat_container = st.container(height=300)
-        for msg in st.session_state.chat_history:
-            chat_container.chat_message(msg["role"]).write(msg["content"])
-            
-        with st.form("chat_form", clear_on_submit=True):
-            c1, c2 = st.columns([4, 1])
-            user_msg = c1.text_input("Type your question...", label_visibility="collapsed")
-            submit = c2.form_submit_button("Send")
-            if submit and user_msg:
-                st.session_state.chat_history.append({"role": "user", "content": user_msg})
-                bot_reply = f"Analyzing your query: '{user_msg}'... Based on active filters, overall metrics are stable. Check the 4-Quadrant Scatter matrix to identify priority reallocations."
-                st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
-                st.rerun()
 
 except Exception as err:
     st.error(f"Error rendering dashboard: {err}")
