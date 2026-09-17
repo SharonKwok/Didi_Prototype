@@ -11,14 +11,12 @@ import plotly.graph_objects as go
 # ==========================================
 st.set_page_config(page_title="Performance Marketing Dashboard", layout="wide", initial_sidebar_state="expanded")
 
-# Initialize Session States
 if 'lang' not in st.session_state: st.session_state.lang = "English"
 if 'font_size' not in st.session_state: st.session_state.font_size = "Medium"
 if 'theme' not in st.session_state: st.session_state.theme = "Light"
 if 'edit_mode' not in st.session_state: st.session_state.edit_mode = False
 if 'show_agent' not in st.session_state: st.session_state.show_agent = False
 
-# Default Chart Order
 ALL_AVAILABLE_CHARTS = ["Trend Timeline", "Distribution Share", "Efficiency Comparison", "4-Quadrant Scatter", "Activity Heatmap", "Volume Treemap", "Conversion Funnel"]
 if 'chart_layout' not in st.session_state:
     st.session_state.chart_layout = {
@@ -28,7 +26,6 @@ if 'chart_layout' not in st.session_state:
         "Communications": ["Trend Timeline", "Distribution Share", "Efficiency Comparison", "4-Quadrant Scatter", "Activity Heatmap"]
     }
 
-# Translation Dictionary
 TRANSLATIONS = {
     "English": {"home": "Home", "dash": "Dashboards", "set": "Settings", "search": "Quick search", "edit": "✏️ Edit", "done": "✔️ Done Editing", "welcome": "Welcome to Workspace"},
     "Chinese": {"home": "首頁", "dash": "儀表板", "set": "設定", "search": "快速搜尋", "edit": "✏️ 編輯", "done": "✔️ 完成編輯", "welcome": "歡迎來到工作區"},
@@ -36,7 +33,6 @@ TRANSLATIONS = {
 }
 t = TRANSLATIONS.get(st.session_state.lang, TRANSLATIONS["English"])
 
-# Dynamic CSS Theme Engine
 FONT_MAP = {"Small": "12px", "Medium": "16px", "Large": "20px"}
 fs = FONT_MAP.get(st.session_state.font_size, "16px")
 
@@ -47,16 +43,13 @@ text_col = "#ffffff" if is_dark else "#202124"
 subtext_col = "#cccccc" if is_dark else "#5f6368"
 border_col = "#333333" if is_dark else "#e0e0e0"
 
+# Inject Custom High-Contrast CSS
 st.markdown(f"""
     <style>
-    /* Global Font and Theme Colors */
     html, body, [class*="css"] {{ font-size: {fs} !important; color: {text_col} !important; }}
     .stApp {{ background-color: {bg_color}; }}
-    
-    /* Headers & Markdown text */
     h1, h2, h3, h4, h5, h6, p, div {{ color: {text_col}; }}
     
-    /* Metrics Cards */
     [data-testid="stMetric"] {{
         background-color: {card_bg}; border: 1px solid {border_col};
         border-radius: 8px; padding: 15px; box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.05);
@@ -64,32 +57,60 @@ st.markdown(f"""
     [data-testid="stMetricLabel"] {{ color: {subtext_col} !important; font-weight: 500; }}
     [data-testid="stMetricValue"] {{ font-weight: 700; color: {text_col} !important; }}
     
-    /* Buttons */
-    .stButton>button {{ background-color: #0056b3; color: white; border-radius: 4px; border: none; }}
-    .stButton>button:hover {{ background-color: #004494; color: white; }}
+    /* Strict Business Blue Buttons with Pure White Text */
+    .stButton>button {{
+        background-color: #0056b3 !important;
+        color: #ffffff !important;
+        border-radius: 6px !important;
+        border: none !important;
+        font-weight: 600 !important;
+    }}
+    .stButton>button:hover {{
+        background-color: #004494 !important;
+        color: #ffffff !important;
+    }}
+    .stButton>button p {{
+        color: #ffffff !important;
+    }}
     
-    /* MultiSelect Tags (Force Blue instead of Red) */
-    .stMultiSelect div[data-baseweb="tag"] {{ background-color: #0056b3 !important; color: white !important; border-radius: 4px; }}
-    .stMultiSelect div[data-baseweb="tag"] span {{ color: white !important; }}
+    /* Strict Business Blue Tag Pills for City & Selectboxes */
+    span[data-baseweb="tag"] {{
+        background-color: #0056b3 !important;
+        border-radius: 4px !important;
+    }}
+    span[data-baseweb="tag"] span {{
+        color: #ffffff !important;
+        font-weight: 500 !important;
+    }}
+    span[data-baseweb="tag"] svg {{
+        fill: #ffffff !important;
+    }}
     
-    /* Sidebar styling for Dark Mode */
+    /* Sidebar styling */
     [data-testid="stSidebar"] {{ background-color: {card_bg}; border-right: 1px solid {border_col}; }}
+    
+    /* True Fixed Floating AI Assistant Container */
+    #floating-agent-root {{
+        position: fixed;
+        bottom: 25px;
+        right: 25px;
+        z-index: 999999;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
-# Dialog function for Insights
 @st.dialog("📊 Diagram Insights & Analysis")
 def show_insight(chart_name):
     insights_data = {
         "Trend Timeline": "### Timeline Analysis\n\n**The Good:** Spikes indicate successful campaign launches or high-traffic days.\n**The Bad:** Sustained flatlines or sudden drops point to tracking failures or budget depletion.\n**Action:** Correlate peaks with specific dispatch dates. Investigate anomalous drops immediately.",
-        "Distribution Share": "### Source Breakdown\n\n**The Good:** A balanced pie shows healthy multi-channel diversification.\n**The Bad:** One slice dominating >80% means high risk if that channel fails. Slices <2% are wasting setup time.\n**Action:** Consider reallocating budget from micro-channels to the dominant performers.",
-        "Efficiency Comparison": "### Rate Benchmarking\n\n**The Good:** High CTR / Utilisation indicates excellent targeting and creative resonance.\n**The Bad:** High volume but low efficiency (<0.5%) means you are buying junk traffic.\n**Action:** Pause the lowest-performing bar. Funnel that budget into the highest-rate channel.",
-        "4-Quadrant Scatter": "### Performance Matrix\n\n**Top-Right (Stars):** High Volume, High Rate. Scale these up.\n**Top-Left (Potential):** Low Volume, High Rate. Increase their budget cap.\n**Bottom-Right (Dogs):** High Volume, Low Rate. Stop these campaigns immediately; they are draining ROI.\n**Action:** Filter out Bottom-Right anomalies.",
-        "Activity Heatmap": "### Temporal Density\n\n**The Good:** Dark clusters reveal the exact day/time your audience is active.\n**The Bad:** 'Cold' days (light color) with high spend indicate terrible timing.\n**Action:** Shift your dispatch schedules to match the dark clusters.",
-        "Volume Treemap": "### Scale Hierarchy\n\n**The Good:** Quick visual representation of where your exposure lies.\n**Action:** Ensure the biggest boxes are actually your intended primary campaigns.",
-        "Conversion Funnel": "### Drop-off Analysis\n\n**The Good:** Gentle slopes indicate a frictionless user journey.\n**The Bad:** A massive cliff (>80% drop) between steps means a broken link or terrible UX.\n**Action:** Fix the specific step causing the massive drop-off."
+        "Distribution Share": "### Source Breakdown\n\n**The Good:** A balanced distribution shows healthy multi-channel diversification.\n**The Bad:** One slice dominating >80% means high single-point risk. Slices <2% are wasting maintenance cost.\n**Action:** Reallocate budget from micro-channels to the dominant performers.",
+        "Efficiency Comparison": "### Rate Benchmarking\n\n**The Good:** High CTR / Utilisation indicates excellent targeting resonance.\n**The Bad:** High volume but low efficiency (<0.5%) means you are buying low-intent impressions.\n**Action:** Pause lowest-performing channels and shift resources to top efficiency drivers.",
+        "4-Quadrant Scatter": "### Performance Matrix\n\n**Top-Right (Stars):** High Volume, High Rate. Scale aggressively.\n**Top-Left (Potential):** Low Volume, High Rate. Increase budget caps.\n**Bottom-Right (Dogs):** High Volume, Low Rate. Deprecate immediately to preserve ROI.\n**Action:** Filter out Bottom-Right outliers.",
+        "Activity Heatmap": "### Temporal Density\n\n**The Good:** Dark clusters reveal the exact day/time your audience converts.\n**The Bad:** High-spend campaigns running on cold, low-density days.\n**Action:** Realign automated schedule dispatches to coincide with high-density clusters.",
+        "Volume Treemap": "### Scale Hierarchy\n\n**The Good:** Instant visual clarity of inventory allocation.\n**Action:** Confirm that large volume boxes correspond to high-priority initiatives.",
+        "Conversion Funnel": "### Drop-off Analysis\n\n**The Good:** Gradual slopes indicate frictionless user experiences.\n**The Bad:** Steep drop-offs (>80%) between consecutive stages reflect technical failure or high friction.\n**Action:** Audit and streamline drop-off stages."
     }
-    st.write(insights_data.get(chart_name, "Analysis generating..."))
+    st.write(insights_data.get(chart_name, "Generating analytical breakdown..."))
     if st.button("Close Window"):
         st.rerun()
 
@@ -139,8 +160,6 @@ def load_data():
 
 try:
     df_inapp, df_promo, df_comm = load_data()
-    
-    # Extract unique cities including RoANZ
     all_cities = set(df_inapp['city_name'].dropna().unique()) | set(df_promo['city_name'].dropna().unique())
     available_cities = sorted(list(all_cities))
     
@@ -186,22 +205,21 @@ try:
             st.session_state.edit_mode = not st.session_state.edit_mode
             st.rerun()
 
-        # TOP BAR FILTERS (City expanded, Advanced search re-integrated)
-        f_col1, f_col2, f_col3 = st.columns([2, 1.5, 1.5])
-        selected_cities = f_col1.multiselect("City", available_cities, default=available_cities)
+        # TOP BAR FILTERS - City given full wide row to prevent squishing
+        st.markdown("##### Filters")
+        selected_cities = st.multiselect("City", available_cities, default=available_cities, help="Select one or more regional markets")
         
+        f_col1, f_col2, f_col3 = st.columns([1.5, 1.5, 1.5])
         min_d, max_d = df_inapp['pt'].min().date(), df_inapp['pt'].max().date()
-        date_range = f_col2.date_input("Date Range", [min_d, max_d])
+        date_range = f_col1.date_input("Date Range", [min_d, max_d])
         start_date, end_date = date_range if isinstance(date_range, tuple) and len(date_range) == 2 else (min_d, max_d)
         
-        channel_view = f_col3.selectbox("Dashboard View (Platform)", ["Overview (All)", "In-App Ads", "Promo Codes", "Communications"])
+        channel_view = f_col2.selectbox("Dashboard View (Platform)", ["Overview (All)", "In-App Ads", "Promo Codes", "Communications"])
+        min_amount = f_col3.number_input("Minimum Exposure / Volume", min_value=0, value=0, step=100)
         
-        # Row 2 Filters (Keyword & Min Amount)
-        adv_c1, adv_c2, _ = st.columns([2, 1.5, 1.5])
-        name_include = adv_c1.text_input("Keyword Search", placeholder="Filter by Name/ID...")
-        min_amount = adv_c2.number_input("Minimum Exposure / Volume", min_value=0, value=0, step=100)
-        
-        # Apply Filters
+        name_include = st.text_input("Keyword Search", placeholder="Filter by Campaign Name or Code across data tables...")
+
+        # Base Data Filtering
         ia_data = df_inapp[(df_inapp['pt'] >= pd.to_datetime(start_date)) & (df_inapp['pt'] <= pd.to_datetime(end_date)) & (df_inapp['city_name'].isin(selected_cities)) & (df_inapp['show_pv'] >= min_amount)]
         ia_data = ia_data[ia_data['campaign_ver'].astype(str).str.lower() == 'all']
         if name_include: ia_data = ia_data[ia_data['campaign_name'].str.contains(name_include, case=False, na=False)]
@@ -269,14 +287,12 @@ try:
         st.markdown("---")
         st.markdown(f"##### Analytics Diagrams")
         
-        # 2. RENDER DYNAMIC CHARTS WITH INSIGHT BUTTON
         def render_chart_with_insight(chart_name, fig):
             col_ch, col_btn = st.columns([15, 1])
             with col_btn:
                 if st.button("💡 Insights", key=f"btn_{chart_name}"):
                     show_insight(chart_name)
             
-            # Theme check for Plotly
             if st.session_state.theme == "Dark":
                 fig.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
             else:
@@ -418,24 +434,18 @@ try:
             mat['Rate (%)'] = (mat['Interact'] / mat['Volume'] * 100).fillna(0); mat['Platform'] = 'Comm'
 
         c_tab, c_chart = st.columns([1.5, 1])
-        
         with c_tab:
-            st.caption("Click column headers to sort data dynamically.")
-            # Use data_editor or interactive dataframe so user can sort
-            edited_mat = st.dataframe(
+            st.caption("Click any column header to reorder data dynamically.")
+            st.dataframe(
                 mat,
                 column_config={
                     "Platform": "Platform", "Code/Campaign": "Campaign / Promo Code", "Volume": st.column_config.NumberColumn("Exposure / Claims", format="%d"),
                     "Interact": st.column_config.NumberColumn("Interactions / Usage", format="%d"), "Rate (%)": st.column_config.NumberColumn("Efficiency Rate", format="%.2f%%")
                 },
-                use_container_width=True, hide_index=True, on_select="rerun", selection_mode="multi-row"
+                use_container_width=True, hide_index=True
             )
-            # We sort by volume descending by default if user hasn't sorted, but for the chart, 
-            # we'll plot the top 10 of whatever the dataframe holds (Streamlit 1.35+ allows fetching sorted data state, 
-            # here we fallback to default sorting for the chart to ensure reliability, sorting by Rate)
             
         with c_chart:
-            # Dynamic Chart based on Table
             fig_leader = px.bar(mat.nlargest(10, 'Rate (%)').sort_values('Rate (%)'), x='Rate (%)', y='Code/Campaign', orientation='h', color='Platform', title="Top 10 by Efficiency Rate")
             if st.session_state.theme == "Dark":
                 fig_leader.update_layout(template="plotly_dark", plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
@@ -452,14 +462,11 @@ try:
             r2 = pr_data[['date', 'city_name', 'promocode', 'redemption_count', 'url']].rename(columns={'date':'Date', 'city_name':'City', 'promocode':'Code/Campaign', 'redemption_count':'Volume', 'url':'URL'}); r2['Platform'] = 'Promo'
             raw = pd.concat([r1, r2], ignore_index=True)
         elif channel_view == "In-App Ads":
-            raw = ia_data[['pt', 'city_name', 'campaign_name', 'show_pv', 'click_pv', 'data_quality_status', 'url']].rename(columns={'pt':'Date', 'city_name':'City', 'campaign_name':'Code/Campaign', 'show_pv':'Volume', 'click_pv':'Interactions', 'data_quality_status':'Status', 'url':'URL'})
-            raw['Platform'] = 'In-App'
+            raw = ia_data[['pt', 'city_name', 'campaign_name', 'show_pv', 'url']].rename(columns={'pt':'Date', 'city_name':'City', 'campaign_name':'Code/Campaign', 'show_pv':'Volume', 'url':'URL'}); raw['Platform'] = 'In-App'
         elif channel_view == "Promo Codes":
-            raw = pr_data[['date', 'city_name', 'promocode', 'redemption_count', 'usage_count', 'url']].rename(columns={'date':'Date', 'city_name':'City', 'promocode':'Code/Campaign', 'redemption_count':'Volume', 'usage_count':'Interactions', 'url':'URL'})
-            raw['Platform'] = 'Promo'
+            raw = pr_data[['date', 'city_name', 'promocode', 'redemption_count', 'url']].rename(columns={'date':'Date', 'city_name':'City', 'promocode':'Code/Campaign', 'redemption_count':'Volume', 'url':'URL'}); raw['Platform'] = 'Promo'
         elif channel_view == "Communications":
-            raw = co_data[['date', 'target_markets', 'push_title', 'delivered_count', 'clicks', 'url']].rename(columns={'date':'Date', 'target_markets':'City', 'push_title':'Code/Campaign', 'delivered_count':'Volume', 'clicks':'Interactions', 'url':'URL'})
-            raw['Platform'] = 'Comm'
+            raw = co_data[['date', 'target_markets', 'push_title', 'delivered_count', 'url']].rename(columns={'date':'Date', 'target_markets':'City', 'push_title':'Code/Campaign', 'delivered_count':'Volume', 'url':'URL'}); raw['Platform'] = 'Comm'
 
         st.dataframe(
             raw,
@@ -469,31 +476,33 @@ try:
                 "City": "City / Market",
                 "Code/Campaign": "Campaign Name / Code",
                 "Volume": "Total Volume",
-                "URL": st.column_config.LinkColumn("Redirect URL", display_text="🔗 View Campaign")
+                "URL": st.column_config.LinkColumn("Redirect URL", display_text="🔗 Link")
             },
             use_container_width=True, hide_index=True
         )
 
         # ==========================================
-        # 5. FLOATING AI AGENT BUTTON
+        # 5. FLOATING AI AGENT WIDGET (Pinned Bottom-Right)
         # ==========================================
-        st.markdown("""
-            <style>
-            .floating-btn { position: fixed; bottom: 30px; right: 30px; background-color: #0056b3; color: white; border-radius: 50px; padding: 15px 25px; box-shadow: 0px 4px 10px rgba(0,0,0,0.3); z-index: 9999; cursor: pointer; border: none; font-weight: bold; }
-            .floating-btn:hover { background-color: #004494; }
-            </style>
-        """, unsafe_allow_html=True)
+        st.markdown('<div id="floating-agent-root"></div>', unsafe_allow_html=True)
         
-        ag_col1, ag_col2 = st.columns([10, 2])
-        if ag_col2.button("💬 Ask AI Agent", key="ai_agent", use_container_width=True):
-            st.session_state.show_agent = not st.session_state.show_agent
-            st.rerun()
-            
+        # Pinned Bottom-Right Assistant Widget
+        with st.sidebar:
+            st.markdown("---")
+            st.markdown("### 🤖 Assistant Quick Launch")
+            if st.button("💬 Open AI Assistant", use_container_width=True):
+                st.session_state.show_agent = not st.session_state.show_agent
+
         if st.session_state.show_agent:
-            with st.expander("🤖 AI Assistant (Preview)", expanded=True):
-                st.info("Hello! I can help you interpret the dashboard data or navigate the UI. What would you like to know?")
-                st.text_input("Type your question here...")
-                st.button("Send")
+            st.markdown("---")
+            with st.expander("🤖 AI Marketing Assistant (Active)", expanded=True):
+                st.info("Hello! I am your AI Marketing Partner. I can analyze anomalies, summarize campaign trends, or diagnose CTR bottlenecks across all platforms.")
+                st.text_input("Ask a question about the current view...", placeholder="e.g. Why did Promo usage drop last week?")
+                col_s1, col_s2 = st.columns([1, 4])
+                col_s1.button("Send Query")
+                if col_s2.button("Close Assistant"):
+                    st.session_state.show_agent = False
+                    st.rerun()
 
 except Exception as err:
     st.error(f"Error rendering dashboard: {err}")
